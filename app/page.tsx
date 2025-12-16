@@ -1,3 +1,6 @@
+"use client";
+import { supabase } from "@/lib/supabase";
+
 export default function Home() {
   return (
     <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
@@ -43,17 +46,19 @@ export default function Home() {
         </div>
 
         <div className="mt-10 flex flex-col gap-3 sm:flex-row">
-          <button
-            className="h-12 rounded-full bg-zinc-900 px-6 text-sm font-medium text-white transition hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-          >
-            Create a Trajectory
-          </button>
+         <button
+  className="h-12 rounded-full bg-zinc-900 px-6 text-sm font-medium text-white transition hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+  onClick={async () => {
+    const { error } = await supabase.from("trajectories").insert({
+      title: "My first lockpoint"
+    });
 
-          <button
-            className="h-12 rounded-full border border-zinc-200 bg-white px-6 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-50 dark:hover:bg-white/10"
-          >
-            How Lockpoint Works
-          </button>
+    if (!error) alert("Trajectory created");
+  }}
+>
+  Create a Trajectory
+</button>
+
         </div>
 
         <div className="mt-10 text-xs text-zinc-500 dark:text-zinc-400">
