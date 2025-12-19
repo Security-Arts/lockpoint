@@ -101,8 +101,8 @@ export default async function AdminPage({
       <div style={{ height: 14 }} />
 
       <div style={grid}>
-        <Metric title="Seal rate" value={`${s.seal_rate_percent}%`} />
-        <Metric title="Committed share" value={`${s.committed_share_percent}%`} />
+        <Metric title="Seal rate" value={pct(s.seal_rate_percent)} />
+        <Metric title="Committed share" value={pct(s.committed_share_percent)} />
         <Metric title="Median time to seal" value={fmt(t.median_time_to_seal)} />
         <Metric title="P90 time to seal" value={fmt(t.p90_time_to_seal)} />
         <Metric
@@ -142,10 +142,13 @@ function Metric({ title, value }: { title: string; value: any }) {
   );
 }
 
-function fmt(v: any) {
-  if (!v) return "—";
-  return String(v);
+function pct(v: any) {
+  if (v === null || v === undefined || v === "") return "—";
+  const n = Number(v);
+  if (Number.isNaN(n)) return "—";
+  return `${n}%`;
 }
+
 
 const page: React.CSSProperties = { maxWidth: 980, margin: "0 auto", padding: "28px 16px 60px" };
 const header: React.CSSProperties = {
