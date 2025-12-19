@@ -4,8 +4,12 @@ import { createClient } from "@supabase/supabase-js";
 export const runtime = "nodejs"; // щоб точно працювало на Vercel
 
 function reqKeyOk(searchParams: Record<string, string | string[] | undefined>) {
-  const key = typeof searchParams.key === "string" ? searchParams.key : "";
-  return key && process.env.ADMIN_DASH_KEY && key === process.env.ADMIN_DASH_KEY;
+  const key = (typeof searchParams.key === "string" ? searchParams.key : "").trim();
+
+  // підтримуємо ОБИДВІ назви, щоб не ловити такі баги
+  const expected = (process.env.ADMIN_DASH_KEY ?? process.env.ADMIN_DASH_KEY ?? "").trim();
+
+  return Boolean(key && expected && key === expected);
 }
 
 export default async function AdminPage({
