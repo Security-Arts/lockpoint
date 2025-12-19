@@ -17,6 +17,15 @@ function shortId(id: string) {
   return `${id.slice(0, 6)}…${id.slice(-6)}`;
 }
 
+function fmtDate(iso: string | null | undefined) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
+  }
+}
+
 export default function Home() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -32,7 +41,26 @@ export default function Home() {
   const [reason, setReason] = useState("");
   const [confirmText, setConfirmText] = useState("");
 
-  const canLock = useMemo(() => confirmText.trim().toUpperCase() === "LOCK", [confirmText]);
+  // Beta stake (symbolic, no charging yet)
+  const [stakePreset, setStakePreset] = useState<number | null>(null);
+  const [stakeCustom, setStakeCustom] = useState<string>("");
+
+  const canLock = useMemo(
+    () => confirmText.trim().toUpperCase() === "LOCK",
+    [confirmText]
+  );
+
+  const stakeAmount = useMemo(() => {
+    if (stakePreset != null) return stakePreset;
+    const n = Number(String(stakeCustom).replace(/[^\d.]/g, ""));
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return Math.round(n);
+  }, [stakePreset, stakeCustom]);
+
+  const stakeLabel = useMemo(() => {
+    if (!stakeAmount) return null;
+    return `$${stakeAmount}`;
+  }, [stakeAmount]);
 
   async function loadLatest() {
     setLoadingList(true);
@@ -59,6 +87,18 @@ export default function Home() {
     loadLatest();
   }, []);
 
+  // ESC to close lock modal
+  useEffect(() => {
+    if (!lockOpen) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLockOpen(false);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [lockOpen]);
+
   async function createTrajectory() {
     setBusy(true);
     setToast(null);
@@ -76,7 +116,7 @@ export default function Home() {
       return;
     }
 
-    setToast(`Trajectory created: ${shortId(data.id)}`);
+    setToast(`Draft created: ${shortId(data.id)}`);
     await loadLatest();
     setBusy(false);
   }
@@ -84,12 +124,17 @@ export default function Home() {
   async function lockTrajectory(id: string) {
     setToast(null);
 
+    // Persist stake in lock_reason (DB-safe: no schema changes required)
+    const stakeLine = stakeLabel ? `\n\n— BETA STAKE (symbolic): ${stakeLabel}` : "";
+    const reasonFinal = (reason || "").trim() + stakeLine;
+    const lockReason = reasonFinal.trim().length ? reasonFinal : null;
+
     const { error } = await supabase
       .from("trajectories")
       .update({
         status: "locked",
         locked_at: new Date().toISOString(),
-        lock_reason: reason || null,
+        lock_reason: lockReason,
       })
       .eq("id", id);
 
@@ -102,23 +147,35 @@ export default function Home() {
     setToast("LOCKED · irreversible");
     setLockOpen(false);
     setLockId(null);
+
     setReason("");
     setConfirmText("");
+    setStakePreset(null);
+    setStakeCustom("");
+
     await loadLatest();
   }
 
   const SYSTEM_FORMULA = (
     <>
-      Lockpoint doesn’t guide execution. It records <strong>commitment</strong> and{" "}
-      <strong>outcome</strong>.
+      Lockpoint doesn’t guide execution.
+      <br />
+      It records <strong>commitment</strong> and <strong>outcome</strong>.
     </>
   );
+
+  const EXAMPLES = [
+    "Delete all social media accounts for 12 months",
+    "Run a marathon before Oct 2026",
+    "Launch a product and reach €100k revenue",
+    "Stop alcohol for 180 days",
+    "Publish a book within 90 days",
+    "Move to a different country and rebuild from zero",
+  ];
 
   return (
     <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
       <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col justify-center px-6 py-24">
-        {/* removed MVP badge */}
-
         <h1 className="text-4xl font-semibold leading-tight tracking-tight">
           Lockpoint
         </h1>
@@ -133,8 +190,34 @@ export default function Home() {
           <strong>amendments only</strong>.
         </p>
 
-        <div className="mt-4 text-sm text-zinc-600 dark:text-zinc-300">
-          {SYSTEM_FORMULA}
+        {/* Formula as a “rule of the space” */}
+        <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+          <div className="flex gap-4">
+            <div className="w-1 rounded-full bg-zinc-900 dark:bg-white" />
+            <div>
+              <div className="text-xl font-semibold leading-snug tracking-tight">
+                {SYSTEM_FORMULA}
+              </div>
+              <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                Lockpoint is a registry. Not a coach. Not a tracker. Not a promise machine.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Examples (prецеденти, не “features”) */}
+        <div className="mt-8 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+          <div className="text-sm font-semibold">Examples of locked trajectories</div>
+          <div className="mt-3 space-y-2 text-sm text-zinc-700 dark:text-zinc-200">
+            {EXAMPLES.map((x) => (
+              <div key={x} className="flex gap-3">
+                <span className="select-none font-mono text-zinc-400 dark:text-zinc-500">
+                  —
+                </span>
+                <span>{x}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -144,7 +227,7 @@ export default function Home() {
             onClick={createTrajectory}
             className="h-12 rounded-full bg-zinc-900 px-6 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
           >
-            {busy ? "Creating..." : "Create a Trajectory"}
+            {busy ? "Creating…" : "Create draft"}
           </button>
 
           {toast && (
@@ -154,10 +237,11 @@ export default function Home() {
           )}
         </div>
 
+        {/* Registry */}
         <div className="mt-10 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
-          <div className="text-sm font-semibold">Latest trajectories</div>
+          <div className="text-sm font-semibold">Registry</div>
           <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-            Drafts exist to be thought through. Locked items are immutable.
+            Drafts are editable. Locked records are permanent.
           </div>
 
           <div className="mt-4 space-y-2">
@@ -191,18 +275,21 @@ export default function Home() {
                         <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
                           <span className="font-mono">{shortId(t.id)}</span>
                           {" · "}
-                          <span
-                            className={[
-                              "uppercase tracking-wide",
-                              isLocked ? "text-zinc-900 dark:text-zinc-50" : "text-zinc-600 dark:text-zinc-300",
-                            ].join(" ")}
-                          >
+                          <span className="uppercase tracking-wide">
                             {isLocked ? "LOCKED" : "DRAFT"}
                           </span>
                           {" · "}
                           <span className="text-zinc-500 dark:text-zinc-400">
-                            {new Date(t.created_at).toLocaleString()}
+                            created {fmtDate(t.created_at)}
                           </span>
+                          {isLocked && t.locked_at ? (
+                            <>
+                              {" · "}
+                              <span className="text-zinc-500 dark:text-zinc-400">
+                                locked {fmtDate(t.locked_at)}
+                              </span>
+                            </>
+                          ) : null}
                         </div>
                       </div>
 
@@ -220,6 +307,8 @@ export default function Home() {
                               setLockOpen(true);
                               setReason("");
                               setConfirmText("");
+                              setStakePreset(null);
+                              setStakeCustom("");
                             }}
                           >
                             LOCK THIS
@@ -234,25 +323,46 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="mt-10 text-xs text-zinc-500 dark:text-zinc-400">
-          {SYSTEM_FORMULA}
-        </div>
-
+        {/* Lock modal (threshold / ritual) */}
         {lockOpen && lockId && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-lg rounded-2xl border border-zinc-200 bg-white p-5 shadow-lg dark:border-white/10 dark:bg-black">
-              <div className="text-lg font-semibold">You are at the lockpoint.</div>
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
+            onMouseDown={() => setLockOpen(false)}
+          >
+            <div
+              className="w-full max-w-lg rounded-2xl border border-zinc-200 bg-white p-5 shadow-xl dark:border-white/10 dark:bg-black"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-lg font-semibold">You are at the lockpoint.</div>
+                  <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+                    Once locked:
+                    <ul className="mt-2 list-disc space-y-1 pl-5">
+                      <li>No edits</li>
+                      <li>No deletions</li>
+                      <li>Only amendments will be recorded</li>
+                      <li>The original commitment remains forever</li>
+                    </ul>
 
-              <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
-                Once locked:
-                <ul className="mt-2 list-disc space-y-1 pl-5">
-                  <li>No edits</li>
-                  <li>No deletions</li>
-                  <li>Only amendments will be recorded</li>
-                  <li>The original commitment remains forever</li>
-                </ul>
+                    <div className="mt-3 text-sm">{SYSTEM_FORMULA}</div>
+                  </div>
+                </div>
 
-                <div className="mt-3">{SYSTEM_FORMULA}</div>
+                {/* No Cancel — only closing the window BEFORE lock */}
+                <button
+                  type="button"
+                  className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200 dark:hover:bg-white/10"
+                  onClick={() => setLockOpen(false)}
+                  aria-label="Close"
+                  title="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
+                You haven’t locked anything yet.
               </div>
 
               <div className="mt-4">
@@ -266,6 +376,69 @@ export default function Home() {
                   rows={3}
                   placeholder="Why is this the point of no return?"
                 />
+              </div>
+
+              {/* Beta stake (symbolic, no charging) */}
+              <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
+                <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">
+                  Optional stake (beta)
+                </div>
+                <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+                  This does not improve outcomes. It increases commitment weight.
+                  <span className="ml-2 text-zinc-500 dark:text-zinc-400">
+                    During beta, stakes are symbolic and not charged.
+                  </span>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {[10, 25, 50].map((amt) => {
+                    const active = stakePreset === amt;
+                    return (
+                      <button
+                        key={amt}
+                        type="button"
+                        onClick={() => {
+                          setStakePreset(active ? null : amt);
+                          setStakeCustom("");
+                        }}
+                        className={[
+                          "h-9 rounded-full border px-4 text-xs font-medium transition",
+                          active
+                            ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-black"
+                            : "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50 dark:border-white/10 dark:bg-black/20 dark:text-zinc-200 dark:hover:bg-white/10",
+                        ].join(" ")}
+                      >
+                        ${amt}
+                      </button>
+                    );
+                  })}
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Custom:
+                    </span>
+                    <input
+                      value={stakeCustom}
+                      onChange={(e) => {
+                        setStakeCustom(e.target.value);
+                        setStakePreset(null);
+                      }}
+                      className="h-9 w-28 rounded-full border border-zinc-200 bg-white px-3 text-xs outline-none dark:border-white/10 dark:bg-black/20"
+                      placeholder="$"
+                      inputMode="numeric"
+                    />
+                  </div>
+                </div>
+
+                {stakeLabel ? (
+                  <div className="mt-2 text-[11px] text-zinc-600 dark:text-zinc-300">
+                    Selected stake: <span className="font-mono">{stakeLabel}</span>
+                  </div>
+                ) : (
+                  <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+                    No stake attached.
+                  </div>
+                )}
               </div>
 
               <div className="mt-4">
@@ -291,9 +464,8 @@ export default function Home() {
                 </button>
               </div>
 
-              {/* No Cancel button. Closing requires clicking outside or Esc. */}
               <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-                Closing this window does not change anything. Locking does.
+                Closing this window changes nothing. Locking does.
               </div>
             </div>
           </div>
