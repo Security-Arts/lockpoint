@@ -20,16 +20,26 @@ export default async function AdminPage({
 }: {
   searchParams: Record<string, string | string[] | undefined>;
 }) {
-  if (!reqKeyOk(searchParams)) {
-    return (
-      <div style={{ padding: 40 }}>
-        <h1>Admin access denied</h1>
-        <p>
-          Open <code>/admin?key=YOUR_ADMIN_DASH_KEY</code>
-        </p>
+ const provided = (typeof searchParams.key === "string" ? searchParams.key : "").trim();
+const expected = (process.env.ADMIN_DASH_KEY || "").trim();
+
+if (!(provided && expected && provided === expected)) {
+  return (
+    <div style={{ padding: 40 }}>
+      <h1>Admin access denied</h1>
+      <p>
+        Open <code>/admin?key=YOUR_ADMIN_DASH_KEY</code>
+      </p>
+
+      <hr style={{ opacity: 0.2, margin: "16px 0" }} />
+
+      <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, opacity: 0.85 }}>
+        <div>provided_len: {provided.length}</div>
+        <div>expected_len: {expected.length}</div>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const service = process.env.SUPABASE_SERVICE_ROLE_KEY!;
