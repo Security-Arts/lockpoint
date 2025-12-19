@@ -7,8 +7,13 @@ export const revalidate = 0;
 function reqKeyOk(searchParams: Record<string, string | string[] | undefined>) {
   const key = (typeof searchParams.key === "string" ? searchParams.key : "").trim();
   const expected = (process.env.ADMIN_DASH_KEY || "").trim();
+
+  // debug (не показує сам ключ)
+  console.log("[admin] key_len=", key.length, "expected_len=", expected.length);
+
   return Boolean(key && expected && key === expected);
 }
+
 
 export default async function AdminPage({
   searchParams,
