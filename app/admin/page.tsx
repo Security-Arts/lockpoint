@@ -142,13 +142,17 @@ function Metric({ title, value }: { title: string; value: any }) {
   );
 }
 
+function fmt(v: any) {
+  if (v === null || v === undefined || v === "") return "—";
+  return String(v);
+}
+
 function pct(v: any) {
   if (v === null || v === undefined || v === "") return "—";
   const n = Number(v);
   if (Number.isNaN(n)) return "—";
   return `${n}%`;
 }
-
 
 const page: React.CSSProperties = { maxWidth: 980, margin: "0 auto", padding: "28px 16px 60px" };
 const header: React.CSSProperties = {
