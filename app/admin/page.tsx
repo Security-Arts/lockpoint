@@ -1,45 +1,56 @@
+// app/admin/page.tsx
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-function reqKeyOk(searchParams: Record<string, string | string[] | undefined>) {
-  const key = (typeof searchParams.key === "string" ? searchParams.key : "").trim();
-  const expected = (process.env.ADMIN_DASH_KEY || "").trim();
+type SP = Record<string, string | string[] | undefined>;
 
-  // debug (не показує сам ключ)
-  console.log("[admin] key_len=", key.length, "expected_len=", expected.length);
-
-  return Boolean(key && expected && key === expected);
+// Next 16 may pass searchParams as a Promise in Server Components
+async function unwrapSearchParams(searchParams: SP | Promise<SP> | undefined) {
+  if (searchParams && typeof (searchParams as any).then === "function") {
+    return (await searchParams) as SP;
+  }
+  return (searchParams ?? {}) as SP;
 }
-
 
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams: Record<string, string | string[] | undefined>;
+  searchParams?: SP | Promise<SP>;
 }) {
- const provided = (typeof searchParams.key === "string" ? searchParams.key : "").trim();
-const expected = (process.env.ADMIN_DASH_KEY || "").trim();
+  const sp = await unwrapSearchParams(searchParams);
 
-if (!(provided && expected && provided === expected)) {
-  return (
-    <div style={{ padding: 40 }}>
-      <h1>Admin access denied</h1>
-      <p>
-        Open <code>/admin?key=YOUR_ADMIN_DASH_KEY</code>
-      </p>
+  const provided = (typeof sp.key === "string" ? sp.key : "").trim();
+  const expected = (process.env.ADMIN_DASH_KEY || "").trim();
 
-      <hr style={{ opacity: 0.2, margin: "16px 0" }} />
+  // debug (does not reveal secrets)
+  console.log("[admin] key_len=", provided.length, "expected_len=", expected.length);
 
-      <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, opacity: 0.85 }}>
-        <div>provided_len: {provided.length}</div>
-        <div>expected_len: {expected.length}</div>
+  if (!(provided && expected && provided === expected)) {
+    return (
+      <div style={{ padding: 40 }}>
+        <h1>Admin access denied</h1>
+        <p>
+          Open <code>/admin?key=YOUR_ADMIN_DASH_KEY</code>
+        </p>
+
+        <hr style={{ opacity: 0.2, margin: "16px 0" }} />
+
+        <div
+          style={{
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            fontSize: 12,
+            opacity: 0.85,
+          }}
+        >
+          <div>provided_len: {provided.length}</div>
+          <div>expected_len: {expected.length}</div>
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const service = process.env.SUPABASE_SERVICE_ROLE_KEY!;
