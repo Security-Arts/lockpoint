@@ -13,15 +13,7 @@ export default async function AdminPage({
 }: {
   searchParams: Record<string, string | string[] | undefined>;
 }) {
- if (!reqKeyOk(searchParams)) {
-  return (
-    <div style={{ padding: 40 }}>
-      <h1>Admin access denied</h1>
-      <p>Missing or invalid ?key=</p>
-    </div>
-  );
-}
-
+if (!reqKeyOk(searchParams)) redirect("/locks");
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const service = process.env.SUPABASE_SERVICE_ROLE_KEY!;
