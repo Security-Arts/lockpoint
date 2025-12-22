@@ -528,7 +528,7 @@ export default function Home() {
             onMouseDown={() => setLockOpen(false)}
           >
             <div
-              className="w-full max-w-lg rounded-2xl border border-zinc-200 bg-white p-5 shadow-xl dark:border-white/10 dark:bg-black"
+             className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-5 pb-40 shadow-xl dark:border-white/10 dark:bg-black"
               onMouseDown={(e) => e.stopPropagation()}
             >
               <div className="flex items-start justify-between gap-3">
@@ -712,12 +712,23 @@ export default function Home() {
                 />
               </div>
 
-        <div className="sticky bottom-0 mt-6 bg-white dark:bg-black pt-4">
+       <div className="sticky bottom-0 -mx-5 mt-6 border-t border-zinc-200 bg-white px-5 pt-4 pb-4 dark:border-white/10 dark:bg-black">
+  <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
+    Type <span className="font-mono">LOCK</span> to proceed
+  </label>
+
+  <input
+    value={confirmText}
+    onChange={(e) => setConfirmText(e.target.value)}
+    className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm font-mono outline-none dark:border-white/10 dark:bg-white/5"
+    placeholder="LOCK"
+  />
+
   <button
     type="button"
     disabled={!canLock}
     className={[
-      "h-11 w-full rounded-full text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
+      "mt-3 h-11 w-full rounded-full text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
       canLock
         ? "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
         : "bg-zinc-300 text-zinc-700 dark:bg-white/10 dark:text-zinc-300",
@@ -726,7 +737,12 @@ export default function Home() {
   >
     LOCK — irreversible
   </button>
+
+  <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+    Current time will be recorded.
+  </div>
 </div>
+
               <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
                 Closing this window changes nothing. Locking does.
               </div>
@@ -741,7 +757,9 @@ export default function Home() {
             onMouseDown={() => setAmendOpen(false)}
           >
             <div
-              className="w-full max-w-lg rounded-2xl border border-zinc-200 bg-white p-5 shadow-xl dark:border-white/10 dark:bg-black"
+              <div
+  className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-5 pb-40 shadow-xl dark:border-white/10 dark:bg-black"
+>
               onMouseDown={(e) => e.stopPropagation()}
             >
               <div className="flex items-start justify-between gap-3">
