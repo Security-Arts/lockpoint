@@ -640,11 +640,11 @@ export default function Home() {
                 <button
                   key={amt}
                   type="button"
-                  onClick={() => {
-                    setStakePreset(active ? null : amt);
-                    setStakeCustom("");
-                  }}
-                  className={[
+               onClick={() => {
+  setStakePreset(active ? null : amt);
+  setStakeCustom("");
+}}
+          className={[
                     "h-9 rounded-full border px-4 text-xs font-medium transition",
                     active
                       ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-black"
@@ -723,3 +723,7 @@ export default function Home() {
     </div>
   </div>
 )}
+      </main>
+    </div>
+  );
+}
