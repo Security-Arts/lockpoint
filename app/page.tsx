@@ -296,9 +296,9 @@ export default function Home() {
   const EXAMPLES = [
     "Delete all social media accounts for 12 months",
     "Run a marathon before Oct 2026",
-    "Launch a product and reach €100k revenue",
+    "Launch a product and reach $100k revenue",
     "Stop alcohol for 180 days",
-    "Publish a book within 90 days",
+    "Read 20 books in 2026",
     "Move to a different country and rebuild from zero",
   ];
 
@@ -607,21 +607,6 @@ export default function Home() {
   />
 </div>
 
-<div className="mt-4">
-  <button
-    type="button"
-    disabled={!canLock}
-    className={[
-      "h-11 w-full rounded-full text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
-      canLock
-        ? "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-        : "bg-zinc-300 text-zinc-700 dark:bg-white/10 dark:text-zinc-300",
-    ].join(" ")}
-    onClick={() => lockTrajectory(lockId)}
-  >
-    LOCK — irreversible
-  </button>
-</div>
 
 
                 {!lockCoreOk ? (
