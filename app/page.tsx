@@ -521,327 +521,205 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Lock modal */}
-        {lockOpen && lockId && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
-            onMouseDown={() => setLockOpen(false)}
-          >
-            <div
-             className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-5 pb-40 shadow-xl dark:border-white/10 dark:bg-black"
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-lg font-semibold">You are at the lockpoint.</div>
-                  <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
-                    Once locked:
-                    <ul className="mt-2 list-disc space-y-1 pl-5">
-                      <li>No edits</li>
-                      <li>No deletions</li>
-                      <li>Only amendments will be recorded</li>
-                      <li>The original commitment remains forever</li>
-                    </ul>
-                    <div className="mt-3 text-sm">{SYSTEM_FORMULA}</div>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200 dark:hover:bg-white/10"
-                  onClick={() => setLockOpen(false)}
-                  aria-label="Close"
-                  title="Close"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
-                You haven’t locked anything yet.
-              </div>
-
-              {/* ядро (обов’язкове) */}
-              <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
-                <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">
-                  Commitment core (required)
-                </div>
-                <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-                  A locked record must have a title and a commitment statement.
-                </div>
-
-                <div className="mt-3">
-                  <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                    Title
-                  </label>
-                  <input
-                    value={lockCoreTitle}
-                    onChange={(e) => setLockCoreTitle(e.target.value)}
-                    className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                    placeholder="Title"
-                  />
-                </div>
-
-                <div className="mt-3">
-                  <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                    Commitment statement
-                  </label>
-                  <textarea
-                    value={lockCoreCommitment}
-                    onChange={(e) => setLockCoreCommitment(e.target.value)}
-                    className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                    rows={3}
-                    placeholder='One sentence. Example: "I will … by …"'
-                  />
-                </div>
-                <div className="mt-4">
-  <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
-    Type <span className="font-mono">LOCK</span> to proceed
-  </label>
-
-  <input
-    value={confirmText}
-    onChange={(e) => setConfirmText(e.target.value)}
-    className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm font-mono outline-none dark:border-white/10 dark:bg-white/5"
-    placeholder="LOCK"
-  />
-</div>
-
-
-
-                {!lockCoreOk ? (
-                  <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-                    Minimum: title ≥ 3 chars, statement ≥ 8 chars.
-                  </div>
-                ) : (
-                  <div className="mt-2 text-[11px] text-zinc-600 dark:text-zinc-300">
-                    Core is valid.
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-4">
-                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                  Lock reason (optional)
-                </label>
-                <textarea
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                  rows={3}
-                  placeholder="Why is this the point of no return?"
-                />
-              </div>
-
-              {/* stake */}
-              <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
-                <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">
-                  Optional stake (beta)
-                </div>
-                <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-                  This does not buy success. It increases the weight of the decision.
-                  <span className="ml-2 text-zinc-500 dark:text-zinc-400">
-                    During beta, stakes are symbolic and not charged.
-                  </span>
-                </div>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {[10, 25, 50].map((amt) => {
-                    const active = stakePreset === amt;
-                    return (
-                      <button
-                        key={amt}
-                        type="button"
-                        onClick={() => {
-                          setStakePreset(active ? null : amt);
-                          setStakeCustom("");
-                        }}
-                        className={[
-                          "h-9 rounded-full border px-4 text-xs font-medium transition",
-                          active
-                            ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-black"
-                            : "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50 dark:border-white/10 dark:bg-black/20 dark:text-zinc-200 dark:hover:bg-white/10",
-                        ].join(" ")}
-                      >
-                        ${amt}
-                      </button>
-                    );
-                  })}
-
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                      Custom:
-                    </span>
-                    <input
-                      value={stakeCustom}
-                      onChange={(e) => {
-                        setStakeCustom(e.target.value);
-                        setStakePreset(null);
-                      }}
-                      className="h-9 w-28 rounded-full border border-zinc-200 bg-white px-3 text-xs outline-none dark:border-white/10 dark:bg-black/20"
-                      placeholder="$"
-                      inputMode="numeric"
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-                  {stakeLabel ? (
-                    <>
-                      Selected stake: <span className="font-mono">{stakeLabel}</span>
-                    </>
-                  ) : (
-                    "No stake attached."
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
-                Current time will be recorded.
-              </div>
-
-        
-{/* ... весь контент модалки ... */}
-
-{/* Sticky lock footer — ONLY ONCE */}
-<div className="sticky bottom-0 left-0 right-0 -mx-5 mt-6 border-t border-zinc-200 bg-white px-5 pt-4 pb-4 dark:border-white/10 dark:bg-black">
-  <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
-    Type <span className="font-mono">LOCK</span> to proceed
-  </label>
-
-  <input
-    value={confirmText}
-    onChange={(e) => setConfirmText(e.target.value)}
-    className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm font-mono outline-none dark:border-white/10 dark:bg-white/5"
-    placeholder="LOCK"
-  />
-
-  <button
-    type="button"
-    disabled={!canLock}
-    className={[
-      "mt-3 h-11 w-full rounded-full text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
-      canLock
-        ? "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-        : "bg-zinc-300 text-zinc-700 dark:bg-white/10 dark:text-zinc-300",
-    ].join(" ")}
-    onClick={() => lockTrajectory(lockId)}
+     {/* Lock modal */}
+{lockOpen && lockId && (
+  <div
+    className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
+    onMouseDown={() => setLockOpen(false)}
   >
-    LOCK — irreversible
-  </button>
-
-  <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-    Current time will be recorded.
-  </div>
-</div>
-
-
-              <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-                Closing this window changes nothing. Locking does.
-              </div>
+    <div
+      className="w-full max-w-lg max-h-[90vh] rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-white/10 dark:bg-black flex flex-col"
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      {/* SCROLL BODY */}
+      <div className="flex-1 overflow-y-auto p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-lg font-semibold">You are at the lockpoint.</div>
+            <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+              Once locked:
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                <li>No edits</li>
+                <li>No deletions</li>
+                <li>Only amendments will be recorded</li>
+                <li>The original commitment remains forever</li>
+              </ul>
+              <div className="mt-3 text-sm">{SYSTEM_FORMULA}</div>
             </div>
           </div>
-        )}
 
-        {/* Amendment modal */}
-        {amendOpen && amendTrajectoryId && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
-            onMouseDown={() => setAmendOpen(false)}
+          <button
+            type="button"
+            className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200 dark:hover:bg-white/10"
+            onClick={() => setLockOpen(false)}
+            aria-label="Close"
+            title="Close"
           >
-            <div
-  className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-5 pb-40 shadow-xl dark:border-white/10 dark:bg-black"
-  onMouseDown={(e) => e.stopPropagation()}
->
-  <div className="flex items-start justify-between gap-3">
-    <div>
-      <div className="text-lg font-semibold">Add amendment</div>
-      <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-        Amendments are immutable. They extend the record.
+            ✕
+          </button>
+        </div>
+
+        <div className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
+          You haven’t locked anything yet.
+        </div>
+
+        {/* ядро (обов’язкове) */}
+        <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
+          <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">
+            Commitment core (required)
+          </div>
+          <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+            A locked record must have a title and a commitment statement.
+          </div>
+
+          <div className="mt-3">
+            <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
+              Title
+            </label>
+            <input
+              value={lockCoreTitle}
+              onChange={(e) => setLockCoreTitle(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+              placeholder="Title"
+            />
+          </div>
+
+          <div className="mt-3">
+            <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
+              Commitment statement
+            </label>
+            <textarea
+              value={lockCoreCommitment}
+              onChange={(e) => setLockCoreCommitment(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+              rows={3}
+              placeholder='One sentence. Example: "I will … by …"'
+            />
+          </div>
+
+          {!lockCoreOk ? (
+            <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+              Minimum: title ≥ 3 chars, statement ≥ 8 chars.
+            </div>
+          ) : (
+            <div className="mt-2 text-[11px] text-zinc-600 dark:text-zinc-300">
+              Core is valid.
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4">
+          <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
+            Lock reason (optional)
+          </label>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+            rows={3}
+            placeholder="Why is this the point of no return?"
+          />
+        </div>
+
+        {/* stake */}
+        <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
+          <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">
+            Optional stake (beta)
+          </div>
+          <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+            This does not buy success. It increases the weight of the decision.
+            <span className="ml-2 text-zinc-500 dark:text-zinc-400">
+              During beta, stakes are symbolic and not charged.
+            </span>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {[10, 25, 50].map((amt) => {
+              const active = stakePreset === amt;
+              return (
+                <button
+                  key={amt}
+                  type="button"
+                  onClick={() => {
+                    setStakePreset(active ? null : amt);
+                    setStakeCustom("");
+                  }}
+                  className={[
+                    "h-9 rounded-full border px-4 text-xs font-medium transition",
+                    active
+                      ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-black"
+                      : "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50 dark:border-white/10 dark:bg-black/20 dark:text-zinc-200 dark:hover:bg-white/10",
+                  ].join(" ")}
+                >
+                  ${amt}
+                </button>
+              );
+            })}
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                Custom:
+              </span>
+              <input
+                value={stakeCustom}
+                onChange={(e) => {
+                  setStakeCustom(e.target.value);
+                  setStakePreset(null);
+                }}
+                className="h-9 w-28 rounded-full border border-zinc-200 bg-white px-3 text-xs outline-none dark:border-white/10 dark:bg-black/20"
+                placeholder="$"
+                inputMode="numeric"
+              />
+            </div>
+          </div>
+
+          <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+            {stakeLabel ? (
+              <>
+                Selected stake: <span className="font-mono">{stakeLabel}</span>
+              </>
+            ) : (
+              "No stake attached."
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
+          Closing this window changes nothing. Locking does.
+        </div>
+      </div>
+
+      {/* FOOTER (always at bottom) */}
+      <div className="border-t border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-black">
+        <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
+          Type <span className="font-mono">LOCK</span> to proceed
+        </label>
+
+        <input
+          value={confirmText}
+          onChange={(e) => setConfirmText(e.target.value)}
+          className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm font-mono outline-none dark:border-white/10 dark:bg-white/5"
+          placeholder="LOCK"
+        />
+
+        <button
+          type="button"
+          disabled={!canLock}
+          className={[
+            "mt-3 h-11 w-full rounded-full text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
+            canLock
+              ? "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+              : "bg-zinc-300 text-zinc-700 dark:bg-white/10 dark:text-zinc-300",
+          ].join(" ")}
+          onClick={() => lockTrajectory(lockId)}
+        >
+          LOCK — irreversible
+        </button>
+
+        <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+          Current time will be recorded.
+        </div>
       </div>
     </div>
-                <button
-                  type="button"
-                  className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200 dark:hover:bg-white/10"
-                  onClick={() => setAmendOpen(false)}
-                  aria-label="Close"
-                  title="Close"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div className="mt-4">
-                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                  Type
-                </label>
-                <select
-                  value={amendKind}
-                  onChange={(e) => setAmendKind(e.target.value as AmendmentKind)}
-                  className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                >
-                  <option value="MILESTONE">MILESTONE — an этап / факт</option>
-                  <option value="OUTCOME">OUTCOME — результат</option>
-                  <option value="DROP">DROP — я зупинив / змінив</option>
-                  <option value="NOTE">NOTE — коротка ремарка</option>
-                </select>
-              </div>
-
-              <div className="mt-4">
-                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                  Text
-                </label>
-                <textarea
-                  value={amendBody}
-                  onChange={(e) => setAmendBody(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                  rows={4}
-                  placeholder={
-                    amendKind === "DROP"
-                      ? 'Why did you drop it? What changed? (facts only)'
-                      : amendKind === "OUTCOME"
-                      ? 'Outcome (facts): done / partial / failed + what happened'
-                      : 'What happened? (facts)'
-                  }
-                />
-              </div>
-
-              <div className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
-                Type <span className="font-mono">AMEND</span> to record this.
-              </div>
-
-              <div className="mt-2">
-                <input
-                  value={amendConfirm}
-                  onChange={(e) => setAmendConfirm(e.target.value)}
-                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm font-mono outline-none dark:border-white/10 dark:bg-white/5"
-                  placeholder="AMEND"
-                />
-              </div>
-
-              <div className="mt-5">
-                <button
-                  type="button"
-                  disabled={!canAmend}
-                  className={[
-                    "h-11 w-full rounded-full text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
-                    canAmend
-                      ? "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-                      : "bg-zinc-300 text-zinc-700 dark:bg-white/10 dark:text-zinc-300",
-                  ].join(" ")}
-                  onClick={addAmendment}
-                >
-                  RECORD AMENDMENT
-                </button>
-              </div>
-
-              <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-                Current time will be recorded.
-              </div>
-            </div>
-          </div>
-        )}
-      </main>
-    </div>
-  );
-}
+  </div>
+)}
