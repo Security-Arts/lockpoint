@@ -6,10 +6,14 @@ import { supabase } from "@/lib/supabase";
 type Trajectory = {
   id: string;
   title: string;
+  commitment?: string | null;
   status: string | null;
   created_at: string;
   locked_at?: string | null;
+  dropped_at?: string | null;
 };
+
+type AmendmentKind = "MILESTONE" | "OUTCOME" | "DROP" | "NOTE";
 
 function shortId(id: string) {
   if (!id) return "";
@@ -17,12 +21,12 @@ function shortId(id: string) {
   return `${id.slice(0, 6)}…${id.slice(-6)}`;
 }
 
-function fmtDate(iso: string | null | undefined) {
+function fmtDate(iso?: string | null) {
   if (!iso) return "";
   try {
     return new Date(iso).toLocaleString();
   } catch {
-    return iso;
+    return String(iso);
   }
 }
 
@@ -33,9 +37,15 @@ export default function Home() {
   const [items, setItems] = useState<Trajectory[]>([]);
   const [loadingList, setLoadingList] = useState(true);
 
+  // Draft inputs ( ядро рішення )
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftCommitment, setDraftCommitment] = useState("");
+
   // Lock modal state
   const [lockOpen, setLockOpen] = useState(false);
   const [lockId, setLockId] = useState<string | null>(null);
+  const [lockCoreTitle, setLockCoreTitle] = useState("");
+  const [lockCoreCommitment, setLockCoreCommitment] = useState("");
 
   // Lock ritual inputs
   const [reason, setReason] = useState("");
@@ -45,10 +55,25 @@ export default function Home() {
   const [stakePreset, setStakePreset] = useState<number | null>(null);
   const [stakeCustom, setStakeCustom] = useState<string>("");
 
-  const canLock = useMemo(
+  // Amendment modal
+  const [amendOpen, setAmendOpen] = useState(false);
+  const [amendTrajectoryId, setAmendTrajectoryId] = useState<string | null>(null);
+  const [amendKind, setAmendKind] = useState<AmendmentKind>("MILESTONE");
+  const [amendBody, setAmendBody] = useState("");
+  const [amendConfirm, setAmendConfirm] = useState(""); // type AMEND to proceed
+
+  const canLockTyped = useMemo(
     () => confirmText.trim().toUpperCase() === "LOCK",
     [confirmText]
   );
+
+  const lockCoreOk = useMemo(() => {
+    const t = lockCoreTitle.trim();
+    const c = lockCoreCommitment.trim();
+    return t.length >= 3 && c.length >= 8;
+  }, [lockCoreTitle, lockCoreCommitment]);
+
+  const canLock = canLockTyped && lockCoreOk;
 
   const stakeAmount = useMemo(() => {
     if (stakePreset != null) return stakePreset;
@@ -62,12 +87,19 @@ export default function Home() {
     return `$${stakeAmount}`;
   }, [stakeAmount]);
 
+  const canAmend = useMemo(
+    () =>
+      amendConfirm.trim().toUpperCase() === "AMEND" &&
+      amendBody.trim().length >= 5,
+    [amendConfirm, amendBody]
+  );
+
   async function loadLatest() {
     setLoadingList(true);
 
     const { data, error } = await supabase
       .from("trajectories")
-      .select("id,title,status,created_at,locked_at")
+      .select("id,title,commitment,status,created_at,locked_at,dropped_at")
       .order("created_at", { ascending: false })
       .limit(8);
 
@@ -87,25 +119,39 @@ export default function Home() {
     loadLatest();
   }, []);
 
-  // ESC to close lock modal
+  // ESC close modals
   useEffect(() => {
-    if (!lockOpen) return;
-
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setLockOpen(false);
+      if (e.key === "Escape") {
+        setLockOpen(false);
+        setAmendOpen(false);
+      }
     };
-
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [lockOpen]);
+  }, []);
 
   async function createTrajectory() {
     setBusy(true);
     setToast(null);
 
+    const title = draftTitle.trim();
+    const commitment = draftCommitment.trim();
+
+    if (title.length < 3 || commitment.length < 8) {
+      setToast("Draft needs a title and a commitment statement.");
+      setBusy(false);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("trajectories")
-      .insert({ title: "My first lockpoint", summary: "Draft" })
+      .insert({
+        title,
+        commitment,
+        summary: null,
+        status: "draft",
+      })
       .select("id")
       .single();
 
@@ -117,21 +163,50 @@ export default function Home() {
     }
 
     setToast(`Draft created: ${shortId(data.id)}`);
+    setDraftTitle("");
+    setDraftCommitment("");
     await loadLatest();
     setBusy(false);
+  }
+
+  function openLockModal(t: Trajectory) {
+    setLockId(t.id);
+    setLockOpen(true);
+    setReason("");
+    setConfirmText("");
+    setStakePreset(null);
+    setStakeCustom("");
+
+    // ядро для lock (можна відредагувати прямо тут, якщо раптом порожнє)
+    setLockCoreTitle(t.title ?? "");
+    setLockCoreCommitment(t.commitment ?? "");
   }
 
   async function lockTrajectory(id: string) {
     setToast(null);
 
-    // Persist stake in lock_reason (DB-safe: no schema changes required)
+    // Persist stake in lock_reason (DB-safe)
     const stakeLine = stakeLabel ? `\n\n— BETA STAKE (symbolic): ${stakeLabel}` : "";
     const reasonFinal = (reason || "").trim() + stakeLine;
     const lockReason = reasonFinal.trim().length ? reasonFinal : null;
 
+    const title = lockCoreTitle.trim();
+    const commitment = lockCoreCommitment.trim();
+
+    if (title.length < 3 || commitment.length < 8) {
+      setToast("Lock requires a title and a commitment statement.");
+      return;
+    }
+    if (!canLockTyped) {
+      setToast('Type "LOCK" to proceed.');
+      return;
+    }
+
     const { error } = await supabase
       .from("trajectories")
       .update({
+        title,
+        commitment,
         status: "locked",
         locked_at: new Date().toISOString(),
         lock_reason: lockReason,
@@ -152,7 +227,61 @@ export default function Home() {
     setConfirmText("");
     setStakePreset(null);
     setStakeCustom("");
+    await loadLatest();
+  }
 
+  function openAmendModal(t: Trajectory, kind: AmendmentKind = "MILESTONE") {
+    setAmendTrajectoryId(t.id);
+    setAmendKind(kind);
+    setAmendBody("");
+    setAmendConfirm("");
+    setAmendOpen(true);
+  }
+
+  async function addAmendment() {
+    if (!amendTrajectoryId) return;
+
+    setToast(null);
+
+    const body = amendBody.trim();
+    if (body.length < 5) {
+      setToast("Amendment text is too short.");
+      return;
+    }
+    if (amendConfirm.trim().toUpperCase() !== "AMEND") {
+      setToast('Type "AMEND" to proceed.');
+      return;
+    }
+
+    // insert amendment (immutable record)
+    const { error } = await supabase.from("trajectory_amendments").insert({
+      trajectory_id: amendTrajectoryId,
+      kind: amendKind,
+      body,
+    });
+
+    if (error) {
+      console.error(error);
+      setToast("Amendment error: " + error.message);
+      return;
+    }
+
+    // optional: mark dropped_at on DROP (if column exists)
+    if (amendKind === "DROP") {
+      const { error: dropErr } = await supabase
+        .from("trajectories")
+        .update({ dropped_at: new Date().toISOString() })
+        .eq("id", amendTrajectoryId);
+
+      if (dropErr) {
+        // not fatal (column may not exist)
+        console.warn("dropped_at update warn:", dropErr.message);
+      }
+    }
+
+    setToast(`${amendKind} recorded`);
+    setAmendOpen(false);
+    setAmendTrajectoryId(null);
     await loadLatest();
   }
 
@@ -190,7 +319,7 @@ export default function Home() {
           <strong>amendments only</strong>.
         </p>
 
-        {/* Formula as a “rule of the space” */}
+        {/* Rule block */}
         <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
           <div className="flex gap-4">
             <div className="w-1 rounded-full bg-zinc-900 dark:bg-white" />
@@ -205,7 +334,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Examples (prецеденти, не “features”) */}
+        {/* Examples */}
         <div className="mt-8 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
           <div className="text-sm font-semibold">Examples of locked trajectories</div>
           <div className="mt-3 space-y-2 text-sm text-zinc-700 dark:text-zinc-200">
@@ -220,21 +349,54 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={createTrajectory}
-            className="h-12 rounded-full bg-zinc-900 px-6 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-          >
-            {busy ? "Creating…" : "Create draft"}
-          </button>
+        {/* Draft inputs */}
+        <div className="mt-10 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+          <div className="text-sm font-semibold">Create draft</div>
+          <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+            A draft can be edited. A lock cannot.
+          </div>
 
-          {toast && (
-            <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
-              {toast}
-            </div>
-          )}
+          <div className="mt-4">
+            <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
+              Title
+            </label>
+            <input
+              value={draftTitle}
+              onChange={(e) => setDraftTitle(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+              placeholder="e.g. No social media for 12 months"
+            />
+          </div>
+
+          <div className="mt-4">
+            <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
+              Commitment statement
+            </label>
+            <textarea
+              value={draftCommitment}
+              onChange={(e) => setDraftCommitment(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+              rows={3}
+              placeholder='One sentence. Example: "I will delete all social media accounts by 2026-01-10 and not return for 12 months."'
+            />
+          </div>
+
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={createTrajectory}
+              className="h-12 rounded-full bg-zinc-900 px-6 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+            >
+              {busy ? "Creating…" : "Create draft"}
+            </button>
+
+            {toast && (
+              <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
+                {toast}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Registry */}
@@ -269,8 +431,8 @@ export default function Home() {
                     ].join(" ")}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-medium">{t.title}</div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium truncate">{t.title}</div>
 
                         <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
                           <span className="font-mono">{shortId(t.id)}</span>
@@ -290,29 +452,65 @@ export default function Home() {
                               </span>
                             </>
                           ) : null}
+                          {t.dropped_at ? (
+                            <>
+                              {" · "}
+                              <span className="text-zinc-600 dark:text-zinc-300">
+                                DROPPED {fmtDate(t.dropped_at)}
+                              </span>
+                            </>
+                          ) : null}
                         </div>
+
+                        {t.commitment ? (
+                          <div className="mt-2 text-xs text-zinc-600 dark:text-zinc-300">
+                            <span className="font-medium text-zinc-700 dark:text-zinc-200">
+                              commitment:
+                            </span>{" "}
+                            {t.commitment}
+                          </div>
+                        ) : null}
                       </div>
 
                       <div className="flex flex-col items-end gap-2">
-                        {isLocked ? (
-                          <span className="rounded-full border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
-                            Irreversible
-                          </span>
-                        ) : (
+                        {!isLocked ? (
                           <button
                             type="button"
                             className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-                            onClick={() => {
-                              setLockId(t.id);
-                              setLockOpen(true);
-                              setReason("");
-                              setConfirmText("");
-                              setStakePreset(null);
-                              setStakeCustom("");
-                            }}
+                            onClick={() => openLockModal(t)}
                           >
                             LOCK THIS
                           </button>
+                        ) : (
+                          <div className="flex flex-col items-end gap-2">
+                            <span className="rounded-full border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
+                              Irreversible
+                            </span>
+
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                                onClick={() => openAmendModal(t, "MILESTONE")}
+                              >
+                                AMEND
+                              </button>
+                              <button
+                                type="button"
+                                className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                                onClick={() => openAmendModal(t, "OUTCOME")}
+                              >
+                                OUTCOME
+                              </button>
+                              <button
+                                type="button"
+                                className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                                onClick={() => openAmendModal(t, "DROP")}
+                              >
+                                DROP
+                              </button>
+                            </div>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -323,7 +521,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Lock modal (threshold / ritual) */}
+        {/* Lock modal */}
         {lockOpen && lockId && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
@@ -344,12 +542,10 @@ export default function Home() {
                       <li>Only amendments will be recorded</li>
                       <li>The original commitment remains forever</li>
                     </ul>
-
                     <div className="mt-3 text-sm">{SYSTEM_FORMULA}</div>
                   </div>
                 </div>
 
-                {/* No Cancel — only closing the window BEFORE lock */}
                 <button
                   type="button"
                   className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200 dark:hover:bg-white/10"
@@ -365,6 +561,51 @@ export default function Home() {
                 You haven’t locked anything yet.
               </div>
 
+              {/* ядро (обов’язкове) */}
+              <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
+                <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">
+                  Commitment core (required)
+                </div>
+                <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+                  A locked record must have a title and a commitment statement.
+                </div>
+
+                <div className="mt-3">
+                  <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
+                    Title
+                  </label>
+                  <input
+                    value={lockCoreTitle}
+                    onChange={(e) => setLockCoreTitle(e.target.value)}
+                    className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+                    placeholder="Title"
+                  />
+                </div>
+
+                <div className="mt-3">
+                  <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
+                    Commitment statement
+                  </label>
+                  <textarea
+                    value={lockCoreCommitment}
+                    onChange={(e) => setLockCoreCommitment(e.target.value)}
+                    className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+                    rows={3}
+                    placeholder='One sentence. Example: "I will … by …"'
+                  />
+                </div>
+
+                {!lockCoreOk ? (
+                  <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+                    Minimum: title ≥ 3 chars, statement ≥ 8 chars.
+                  </div>
+                ) : (
+                  <div className="mt-2 text-[11px] text-zinc-600 dark:text-zinc-300">
+                    Core is valid.
+                  </div>
+                )}
+              </div>
+
               <div className="mt-4">
                 <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
                   Lock reason (optional)
@@ -378,13 +619,13 @@ export default function Home() {
                 />
               </div>
 
-              {/* Beta stake (symbolic, no charging) */}
+              {/* stake */}
               <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
                 <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">
                   Optional stake (beta)
                 </div>
                 <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-                  This does not improve outcomes. It increases commitment weight.
+                  This does not buy success. It increases the weight of the decision.
                   <span className="ml-2 text-zinc-500 dark:text-zinc-400">
                     During beta, stakes are symbolic and not charged.
                   </span>
@@ -430,18 +671,22 @@ export default function Home() {
                   </div>
                 </div>
 
-                {stakeLabel ? (
-                  <div className="mt-2 text-[11px] text-zinc-600 dark:text-zinc-300">
-                    Selected stake: <span className="font-mono">{stakeLabel}</span>
-                  </div>
-                ) : (
-                  <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-                    No stake attached.
-                  </div>
-                )}
+                <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+                  {stakeLabel ? (
+                    <>
+                      Selected stake: <span className="font-mono">{stakeLabel}</span>
+                    </>
+                  ) : (
+                    "No stake attached."
+                  )}
+                </div>
               </div>
 
-              <div className="mt-4">
+              <div className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
+                Current time will be recorded.
+              </div>
+
+              <div className="mt-3">
                 <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
                   Type <span className="font-mono">LOCK</span> to proceed
                 </label>
@@ -457,15 +702,119 @@ export default function Home() {
                 <button
                   type="button"
                   disabled={!canLock}
-                  className="h-11 w-full rounded-full bg-zinc-900 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                  className={[
+                    "h-11 w-full rounded-full text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
+                    canLock
+                      ? "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                      : "bg-zinc-300 text-zinc-700 dark:bg-white/10 dark:text-zinc-300",
+                  ].join(" ")}
                   onClick={() => lockTrajectory(lockId)}
                 >
-                  LOCK (irreversible)
+                  LOCK — irreversible
                 </button>
               </div>
 
               <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
                 Closing this window changes nothing. Locking does.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Amendment modal */}
+        {amendOpen && amendTrajectoryId && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
+            onMouseDown={() => setAmendOpen(false)}
+          >
+            <div
+              className="w-full max-w-lg rounded-2xl border border-zinc-200 bg-white p-5 shadow-xl dark:border-white/10 dark:bg-black"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-lg font-semibold">Add amendment</div>
+                  <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+                    Amendments are immutable. They extend the record.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200 dark:hover:bg-white/10"
+                  onClick={() => setAmendOpen(false)}
+                  aria-label="Close"
+                  title="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="mt-4">
+                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
+                  Type
+                </label>
+                <select
+                  value={amendKind}
+                  onChange={(e) => setAmendKind(e.target.value as AmendmentKind)}
+                  className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+                >
+                  <option value="MILESTONE">MILESTONE — an этап / факт</option>
+                  <option value="OUTCOME">OUTCOME — результат</option>
+                  <option value="DROP">DROP — я зупинив / змінив</option>
+                  <option value="NOTE">NOTE — коротка ремарка</option>
+                </select>
+              </div>
+
+              <div className="mt-4">
+                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
+                  Text
+                </label>
+                <textarea
+                  value={amendBody}
+                  onChange={(e) => setAmendBody(e.target.value)}
+                  className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+                  rows={4}
+                  placeholder={
+                    amendKind === "DROP"
+                      ? 'Why did you drop it? What changed? (facts only)'
+                      : amendKind === "OUTCOME"
+                      ? 'Outcome (facts): done / partial / failed + what happened'
+                      : 'What happened? (facts)'
+                  }
+                />
+              </div>
+
+              <div className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
+                Type <span className="font-mono">AMEND</span> to record this.
+              </div>
+
+              <div className="mt-2">
+                <input
+                  value={amendConfirm}
+                  onChange={(e) => setAmendConfirm(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm font-mono outline-none dark:border-white/10 dark:bg-white/5"
+                  placeholder="AMEND"
+                />
+              </div>
+
+              <div className="mt-5">
+                <button
+                  type="button"
+                  disabled={!canAmend}
+                  className={[
+                    "h-11 w-full rounded-full text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
+                    canAmend
+                      ? "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                      : "bg-zinc-300 text-zinc-700 dark:bg-white/10 dark:text-zinc-300",
+                  ].join(" ")}
+                  onClick={addAmendment}
+                >
+                  RECORD AMENDMENT
+                </button>
+              </div>
+
+              <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+                Current time will be recorded.
               </div>
             </div>
           </div>
