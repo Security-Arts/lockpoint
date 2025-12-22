@@ -758,8 +758,9 @@ export default function Home() {
           >
             <div
                 className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-5 pb-40 shadow-xl dark:border-white/10 dark:bg-black">
-              onMouseDown={(e) => e.stopPropagation()}            >
-              <div className="flex items-start justify-between gap-3">
+              onMouseDown={(e) => e.stopPropagation()}      
+              >
+              <div className="flex items-start justify-between gap-3"
                 <div>
                   <div className="text-lg font-semibold">Add amendment</div>
                   <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
