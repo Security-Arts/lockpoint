@@ -700,18 +700,7 @@ export default function Home() {
                 Current time will be recorded.
               </div>
 
-              <div className="mt-3">
-                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                  Type <span className="font-mono">LOCK</span> to proceed
-                </label>
-                <input
-                  value={confirmText}
-                  onChange={(e) => setConfirmText(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm font-mono outline-none dark:border-white/10 dark:bg-white/5"
-                  placeholder="LOCK"
-                />
-              </div>
-
+        
        <div className="sticky bottom-0 -mx-5 mt-6 border-t border-zinc-200 bg-white px-5 pt-4 pb-4 dark:border-white/10 dark:bg-black">
   <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
     Type <span className="font-mono">LOCK</span> to proceed
