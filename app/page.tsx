@@ -757,16 +757,16 @@ export default function Home() {
             onMouseDown={() => setAmendOpen(false)}
           >
             <div
-                className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-5 pb-40 shadow-xl dark:border-white/10 dark:bg-black">
-              onMouseDown={(e) => e.stopPropagation()}      
-              >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-lg font-semibold">Add amendment</div>
-                  <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                    Amendments are immutable. They extend the record.
-                  </div>
-                </div>
+  className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-5 pb-40 shadow-xl dark:border-white/10 dark:bg-black"
+  onMouseDown={(e) => e.stopPropagation()}
+>
+  <div className="flex items-start justify-between gap-3">
+    <div>
+      <div className="text-lg font-semibold">Add amendment</div>
+      <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+        Amendments are immutable. They extend the record.
+      </div>
+    </div>
                 <button
                   type="button"
                   className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200 dark:hover:bg-white/10"
