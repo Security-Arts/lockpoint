@@ -701,7 +701,10 @@ export default function Home() {
               </div>
 
         
-       <div className="sticky bottom-0 -mx-5 mt-6 border-t border-zinc-200 bg-white px-5 pt-4 pb-4 dark:border-white/10 dark:bg-black">
+{/* ... весь контент модалки ... */}
+
+{/* Sticky lock footer — ONLY ONCE */}
+<div className="sticky bottom-0 left-0 right-0 -mx-5 mt-6 border-t border-zinc-200 bg-white px-5 pt-4 pb-4 dark:border-white/10 dark:bg-black">
   <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
     Type <span className="font-mono">LOCK</span> to proceed
   </label>
@@ -731,6 +734,7 @@ export default function Home() {
     Current time will be recorded.
   </div>
 </div>
+
 
               <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
                 Closing this window changes nothing. Locking does.
