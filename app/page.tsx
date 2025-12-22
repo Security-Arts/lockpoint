@@ -698,22 +698,21 @@ export default function Home() {
                 />
               </div>
 
-              <div className="mt-5">
-                <button
-                  type="button"
-                  disabled={!canLock}
-                  className={[
-                    "h-11 w-full rounded-full text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
-                    canLock
-                      ? "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-                      : "bg-zinc-300 text-zinc-700 dark:bg-white/10 dark:text-zinc-300",
-                  ].join(" ")}
-                  onClick={() => lockTrajectory(lockId)}
-                >
-                  LOCK — irreversible
-                </button>
-              </div>
-
+        <div className="sticky bottom-0 mt-6 bg-white dark:bg-black pt-4">
+  <button
+    type="button"
+    disabled={!canLock}
+    className={[
+      "h-11 w-full rounded-full text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
+      canLock
+        ? "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+        : "bg-zinc-300 text-zinc-700 dark:bg-white/10 dark:text-zinc-300",
+    ].join(" ")}
+    onClick={() => lockTrajectory(lockId)}
+  >
+    LOCK — irreversible
+  </button>
+</div>
               <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
                 Closing this window changes nothing. Locking does.
               </div>
