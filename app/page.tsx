@@ -186,68 +186,59 @@ export default function Home() {
   }
 
  async function lockTrajectory(id: string) {
-  if (!id) return;
-
   if (lockLoading) return;
   setLockLoading(true);
+  setToast(null);
 
-  try {
-    setToast(null);
+  const title = lockCoreTitle.trim();
+  const commitment = lockCoreCommitment.trim();
 
-    const title = lockCoreTitle.trim();
-    const commitment = lockCoreCommitment.trim();
-
-    if (title.length < 3 || commitment.length < 8) {
-      setToast("Lock requires a title and a commitment statement.");
-      return;
-    }
-    if (!canLockTyped) {
-      setToast('Type "LOCK" to proceed.');
-      return;
-    }
-
-    const payload = {
-      title,
-      commitment,
-      status: "locked",
-      locked_at: new Date().toISOString(),
-      // ⚠️ НЕ додавай lock_reason, поки не впевнишся що колонка існує
-    };
-
-    const { data, error } = await supabase
-      .from("trajectories")
-      .update(payload)
-      .eq("id", id)
-      .select("id,status,locked_at")
-      .single();
-
-    if (error) {
-      console.error("LOCK UPDATE ERROR:", error);
-      setToast("Lock error: " + error.message);
-      return;
-    }
-
-    if (!data) {
-      setToast("Lock failed: no row returned (RLS or wrong id).");
-      return;
-    }
-
-    setToast(`LOCKED ✅ (${String(data.status)} @ ${String(data.locked_at)})`);
-    setLockOpen(false);
-    setLockId(null);
-
-    setReason("");
-    setConfirmText("");
-    setStakePreset(null);
-    setStakeCustom("");
-
-    await loadLatest();
-  } catch (e: any) {
-    console.error("LOCK EXCEPTION:", e);
-    setToast("Lock exception: " + (e?.message || String(e)));
-  } finally {
+  if (title.length < 3 || commitment.length < 8) {
+    setToast("Lock requires a title and a commitment statement.");
     setLockLoading(false);
+    return;
   }
+  if (!canLockTyped) {
+    setToast('Type "LOCK" to proceed.');
+    setLockLoading(false);
+    return;
+  }
+
+  // Persist stake + reason
+  const stakeLine = stakeLabel ? `\n\n— BETA STAKE (symbolic): ${stakeLabel}` : "";
+  const reasonFinal = (reason || "").trim() + stakeLine;
+  const lockReason = reasonFinal.trim().length ? reasonFinal : null;
+
+  const payload = {
+    title,
+    commitment,
+    status: "locked",
+    locked_at: new Date().toISOString(),
+    lock_reason: lockReason,
+    stake_amount: stakeAmount ?? null,
+    stake_currency: "USD",
+  };
+
+  const { error } = await supabase.from("trajectories").update(payload).eq("id", id);
+
+  if (error) {
+    console.error("Lock error:", error);
+    setToast("Lock error: " + error.message);
+    setLockLoading(false);
+    return;
+  }
+
+  setToast("LOCKED · irreversible");
+  setLockOpen(false);
+  setLockId(null);
+
+  setReason("");
+  setConfirmText("");
+  setStakePreset(null);
+  setStakeCustom("");
+
+  await loadLatest();
+  setLockLoading(false);
 }
 
   function openAmendModal(t: Trajectory, kind: AmendmentKind = "MILESTONE") {
