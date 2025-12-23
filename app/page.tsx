@@ -185,7 +185,7 @@ export default function Home() {
     setLockCoreCommitment(t.commitment ?? "");
   }
 
- async function lockTrajectory(id: string) {
+async function lockTrajectory(id: string) {
   if (lockLoading) return;
   setLockLoading(true);
   setToast(null);
@@ -204,19 +204,15 @@ export default function Home() {
     return;
   }
 
-  // Persist stake + reason
-  const stakeLine = stakeLabel ? `\n\n— BETA STAKE (symbolic): ${stakeLabel}` : "";
-  const reasonFinal = (reason || "").trim() + stakeLine;
-  const lockReason = reasonFinal.trim().length ? reasonFinal : null;
-
-  const payload = {
+  // ✅ IMPORTANT: persist stake + reason in DB
+  const payload: Record<string, any> = {
     title,
     commitment,
     status: "locked",
     locked_at: new Date().toISOString(),
-    lock_reason: lockReason,
     stake_amount: stakeAmount ?? null,
-    stake_currency: "USD",
+    stake_currency: stakeAmount ? "USD" : null,
+    lock_reason: reason?.trim() ? reason.trim() : null,
   };
 
   const { error } = await supabase.from("trajectories").update(payload).eq("id", id);
