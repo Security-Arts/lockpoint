@@ -747,10 +747,10 @@ async function lockTrajectory(id: string | null) {
                     onChange={(e) => setAmendKind(e.target.value as AmendmentKind)}
                     className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
                   >
-                    <option value="MILESTONE">MILESTONE — an этап / факт</option>
-                    <option value="OUTCOME">OUTCOME — результат</option>
-                    <option value="DROP">DROP — я зупинив / змінив</option>
-                    <option value="NOTE">NOTE — коротка ремарка</option>
+                   <option value="MILESTONE">MILESTONE — factual milestone</option>
+  <option value="OUTCOME">OUTCOME — final result</option>
+  <option value="DROP">DROP — stopped / abandoned</option>
+  <option value="NOTE">NOTE — short note</option>
                   </select>
                 </div>
 
