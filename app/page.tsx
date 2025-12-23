@@ -182,53 +182,62 @@ export default function Home() {
     setLockCoreCommitment(t.commitment ?? "");
   }
 
-  async function lockTrajectory(id: string) {
-    setToast(null);
+async function lockTrajectory(id: string) {
+  if (lockLoading) return;
+  setLockLoading(true);
+  setToast(null);
 
-    // Persist stake in lock_reason (DB-safe)
-    const stakeLine = stakeLabel ? `\n\n— BETA STAKE (symbolic): ${stakeLabel}` : "";
-    const reasonFinal = (reason || "").trim() + stakeLine;
-    const lockReason = reasonFinal.trim().length ? reasonFinal : null;
+  const title = lockCoreTitle.trim();
+  const commitment = lockCoreCommitment.trim();
 
-    const title = lockCoreTitle.trim();
-    const commitment = lockCoreCommitment.trim();
-
-    if (title.length < 3 || commitment.length < 8) {
-      setToast("Lock requires a title and a commitment statement.");
-      return;
-    }
-    if (!canLockTyped) {
-      setToast('Type "LOCK" to proceed.');
-      return;
-    }
-
-    const { error } = await supabase
-      .from("trajectories")
-      .update({
-        title,
-        commitment,
-        status: "locked",
-        locked_at: new Date().toISOString(),
-        lock_reason: lockReason,
-      })
-      .eq("id", id);
-
-    if (error) {
-      console.error(error);
-      setToast("Lock error: " + error.message);
-      return;
-    }
-
-    setToast("LOCKED · irreversible");
-    setLockOpen(false);
-    setLockId(null);
-
-    setReason("");
-    setConfirmText("");
-    setStakePreset(null);
-    setStakeCustom("");
-    await loadLatest();
+  if (title.length < 3 || commitment.length < 8) {
+    setToast("Lock requires a title and a commitment statement.");
+    setLockLoading(false);
+    return;
   }
+  if (!canLockTyped) {
+    setToast('Type "LOCK" to proceed.');
+    setLockLoading(false);
+    return;
+  }
+
+  // Якщо в БД НЕМА колонки lock_reason — цей рядок ламає update.
+  // Тому робимо safe-вариант: або додай колонку, або залиш так.
+  const payload: any = {
+    title,
+    commitment,
+    status: "locked",
+    locked_at: new Date().toISOString(),
+  };
+
+  // Якщо в тебе ТОЧНО є lock_reason колонка — розкоментуй:
+  // const stakeLine = stakeLabel ? `\n\n— BETA STAKE (symbolic): ${stakeLabel}` : "";
+  // const reasonFinal = (reason || "").trim() + stakeLine;
+  // const lockReason = reasonFinal.trim().length ? reasonFinal : null;
+  // payload.lock_reason = lockReason;
+
+  const { error } = await supabase.from("trajectories").update(payload).eq("id", id);
+
+  if (error) {
+    console.error("Lock error:", error);
+    setToast("Lock error: " + error.message);
+    setLockLoading(false);
+    return;
+  }
+
+  setToast("LOCKED · irreversible");
+  setLockOpen(false);
+  setLockId(null);
+
+  setReason("");
+  setConfirmText("");
+  setStakePreset(null);
+  setStakeCustom("");
+
+  await loadLatest();
+  setLockLoading(false);
+}
+
 
   function openAmendModal(t: Trajectory, kind: AmendmentKind = "MILESTONE") {
     setAmendTrajectoryId(t.id);
@@ -702,19 +711,26 @@ export default function Home() {
           placeholder="LOCK"
         />
 
-        <button
-          type="button"
-          disabled={!canLock}
-          className={[
-            "mt-3 h-11 w-full rounded-full text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
-            canLock
-              ? "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-              : "bg-zinc-300 text-zinc-700 dark:bg-white/10 dark:text-zinc-300",
-          ].join(" ")}
-          onClick={() => lockTrajectory(lockId)}
-        >
-          LOCK — irreversible
-        </button>
+      <button
+  type="button"
+  disabled={!canLock || lockLoading}
+  className={[
+    "mt-3 h-11 w-full rounded-full text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
+    canLock && !lockLoading
+      ? "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+      : "bg-zinc-300 text-zinc-700 dark:bg-white/10 dark:text-zinc-300",
+  ].join(" ")}
+  onClick={() => lockTrajectory(lockId)}
+>
+  {lockLoading ? "Locking…" : "LOCK — irreversible"}
+</button>
+
+{toast && (
+  <div className="mt-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
+    {toast}
+  </div>
+)}
+
 
         <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
           Current time will be recorded.
