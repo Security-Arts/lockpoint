@@ -185,7 +185,11 @@ export default function Home() {
     setLockCoreCommitment(t.commitment ?? "");
   }
 
-async function lockTrajectory(id: string) {
+async function lockTrajectory(id: string | null) {
+  if (!id) {
+    setToast("Internal error: missing trajectory id");
+    return;
+  }
   if (lockLoading) return;
   setLockLoading(true);
   setToast(null);
