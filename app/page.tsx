@@ -185,9 +185,13 @@ export default function Home() {
     setLockCoreCommitment(t.commitment ?? "");
   }
 
-  async function lockTrajectory(id: string) {
-    if (lockLoading) return;
-    setLockLoading(true);
+ async function lockTrajectory(id: string) {
+  if (!id) return;
+
+  if (lockLoading) return;
+  setLockLoading(true);
+
+  try {
     setToast(null);
 
     const title = lockCoreTitle.trim();
@@ -195,39 +199,40 @@ export default function Home() {
 
     if (title.length < 3 || commitment.length < 8) {
       setToast("Lock requires a title and a commitment statement.");
-      setLockLoading(false);
       return;
     }
     if (!canLockTyped) {
       setToast('Type "LOCK" to proceed.');
-      setLockLoading(false);
       return;
     }
 
-    // IMPORTANT: we keep payload DB-safe (no lock_reason unless you have the column)
-    const payload: Record<string, any> = {
+    const payload = {
       title,
       commitment,
       status: "locked",
       locked_at: new Date().toISOString(),
+      // ⚠️ НЕ додавай lock_reason, поки не впевнишся що колонка існує
     };
 
-    // If you later add column trajectories.lock_reason, you can enable this:
-    // const stakeLine = stakeLabel ? `\n\n— BETA STAKE (symbolic): ${stakeLabel}` : "";
-    // const reasonFinal = (reason || "").trim() + stakeLine;
-    // const lockReason = reasonFinal.trim().length ? reasonFinal : null;
-    // payload.lock_reason = lockReason;
-
-    const { error } = await supabase.from("trajectories").update(payload).eq("id", id);
+    const { data, error } = await supabase
+      .from("trajectories")
+      .update(payload)
+      .eq("id", id)
+      .select("id,status,locked_at")
+      .single();
 
     if (error) {
-      console.error("Lock error:", error);
+      console.error("LOCK UPDATE ERROR:", error);
       setToast("Lock error: " + error.message);
-      setLockLoading(false);
       return;
     }
 
-    setToast("LOCKED · irreversible");
+    if (!data) {
+      setToast("Lock failed: no row returned (RLS or wrong id).");
+      return;
+    }
+
+    setToast(`LOCKED ✅ (${String(data.status)} @ ${String(data.locked_at)})`);
     setLockOpen(false);
     setLockId(null);
 
@@ -237,8 +242,13 @@ export default function Home() {
     setStakeCustom("");
 
     await loadLatest();
+  } catch (e: any) {
+    console.error("LOCK EXCEPTION:", e);
+    setToast("Lock exception: " + (e?.message || String(e)));
+  } finally {
     setLockLoading(false);
   }
+}
 
   function openAmendModal(t: Trajectory, kind: AmendmentKind = "MILESTONE") {
     setAmendTrajectoryId(t.id);
