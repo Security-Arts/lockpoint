@@ -254,40 +254,37 @@ async function addAmendment() {
 
   setToast(null);
 
-  const text = amendBody.trim();
+  const content = amendBody.trim();
 
-  if (text.length < 3) {
+  if (content.length < 5) {
     setToast("Amendment text is too short.");
     return;
   }
-
   if (amendConfirm.trim().toUpperCase() !== "AMEND") {
     setToast('Type "AMEND" to proceed.');
     return;
   }
 
-const text = amendBody.trim();
-
-const { error } = await supabase
-  .from("trajectory_amendments")
-  .insert({
+  const { error } = await supabase.from("trajectory_amendments").insert({
     trajectory_id: amendTrajectoryId,
     kind: amendKind,
-    content: text, // ✅ єдине поле
+    content, // ✅ одна колонка
   });
 
-if (error) {
-  console.error(error);
-  setToast("Amendment error: " + error.message);
-  return;
-}
+  if (error) {
+    console.error(error);
+    setToast("Amendment error: " + error.message);
+    return;
+  }
 
   // якщо це DROP — помічаємо траєкторію
   if (amendKind === "DROP") {
-    await supabase
+    const { error: dropErr } = await supabase
       .from("trajectories")
       .update({ dropped_at: new Date().toISOString() })
       .eq("id", amendTrajectoryId);
+
+    if (dropErr) console.warn("dropped_at update warn:", dropErr.message);
   }
 
   setToast(`${amendKind} recorded`);
