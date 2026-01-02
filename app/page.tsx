@@ -266,20 +266,21 @@ async function addAmendment() {
     return;
   }
 
-  const { error } = await supabase
-    .from("trajectory_amendments")
-    .insert({
-      trajectory_id: amendTrajectoryId,
-      kind: amendKind,
-      content: text, // ✅ основне поле
-      body: text,    // ✅ для NOT NULL
-    });
+const text = amendBody.trim();
 
-  if (error) {
-    console.error(error);
-    setToast("Amendment error: " + error.message);
-    return;
-  }
+const { error } = await supabase
+  .from("trajectory_amendments")
+  .insert({
+    trajectory_id: amendTrajectoryId,
+    kind: amendKind,
+    content: text, // ✅ єдине поле
+  });
+
+if (error) {
+  console.error(error);
+  setToast("Amendment error: " + error.message);
+  return;
+}
 
   // якщо це DROP — помічаємо траєкторію
   if (amendKind === "DROP") {
