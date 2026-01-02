@@ -62,7 +62,23 @@ export default function LocksPage() {
                   <div>
                     <div style={{ fontWeight: 650 }}>{r.title}</div>
                     <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
-                      {r.lock_type.toUpperCase()} · {r.status.toUpperCase()}
+                     <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
+  {r.lock_type.toUpperCase()} ·{" "}
+  <span
+    style={{
+      fontWeight: 650,
+      color:
+        r.status === "completed"
+          ? "#7CFF7A"
+          : r.status === "broken"
+          ? "#FF7A7A"
+          : "inherit",
+    }}
+  >
+    {r.status.toUpperCase()}
+  </span>
+</div>
+
                     </div>
                   </div>
                   <div style={{ fontSize: 12, opacity: 0.7 }}>
