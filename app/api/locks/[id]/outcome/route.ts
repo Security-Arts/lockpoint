@@ -1,11 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export async function POST(
-  req: Request,
-  { params }: { params: { id: string } }
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const lockId = params.id;
+  const { id: lockId } = await params;
 
   // 1) read auth from cookie (user token)
   const authHeader = req.headers.get("authorization") || "";
