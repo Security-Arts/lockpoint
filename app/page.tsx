@@ -263,12 +263,11 @@ async function lockTrajectory(id: string | null) {
       setToast('Type "AMEND" to proceed.');
       return;
     }
-
-    const { error } = await supabase.from("trajectory_amendments").insert({
-      trajectory_id: amendTrajectoryId,
-      kind: amendKind,
-      body,
-    });
+const { error } = await supabase.from("trajectory_amendments").insert({
+  trajectory_id: amendTrajectoryId,
+  kind: amendKind,
+  content: body, // ✅ важливо: саме content
+});
 
     if (error) {
       console.error(error);
