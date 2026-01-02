@@ -526,52 +526,6 @@ async function lockTrajectory(id: string | null) {
 )}
 
 
-                       <div className="flex flex-col items-end gap-2">
-  <span className="rounded-full border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
-    Irreversible
-  </span>
-
-  {/* microcopy */}
-  <div className="text-[11px] text-zinc-600 dark:text-zinc-300 text-right">
-    <div className="font-semibold">Choose your next action</div>
-    <div className="opacity-80">Amend clarifies the record. Outcome finalizes it forever.</div>
-  </div>
-
-  <div className="flex gap-2">
-    <button
-      type="button"
-      className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-      onClick={() => openAmendModal(t, "MILESTONE")}
-      title="Clarify or add a factual milestone"
-    >
-      AMEND
-    </button>
-
-    <button
-      type="button"
-      className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-      onClick={() => openAmendModal(t, "OUTCOME")}
-      title="Record the final outcome (finalizes forever)"
-    >
-      OUTCOME
-    </button>
-
-    {/* DROP removed for locked records */}
-  </div>
-
-  <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400 text-right">
-    Once an outcome is recorded, this lock becomes final and cannot be changed.
-  </div>
-</div>
-
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
 
         {/* Lock modal */}
         {lockOpen && lockId && (
