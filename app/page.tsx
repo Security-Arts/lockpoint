@@ -529,6 +529,13 @@ async function lockTrajectory(id: string | null) {
     </div>
   )}
 </div>
+                                        </div> {/* end flex row */}
+                  </div>   {/* end card */}
+                );
+              })
+            )}
+          </div>
+        </div>
 
         {/* Lock modal */}
         {lockOpen && lockId && (
