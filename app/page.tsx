@@ -328,9 +328,14 @@ async function lockTrajectory(id: string | null) {
             <div className="w-1 rounded-full bg-zinc-900 dark:bg-white" />
             <div>
               <div className="text-xl font-semibold leading-snug tracking-tight">{SYSTEM_FORMULA}</div>
-              <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-                Lockpoint is a registry. Not a coach. Not a tracker. Not a promise machine.
-              </div>
+              <div className="mt-2 text-xs text-zinc-600 dark:text-zinc-300">
+  <span className="font-semibold">Lockpoint is not a planner, tracker, or coach.</span>{" "}
+  It records a commitment, locks it in time, and later records the outcome — unchanged, forever.
+  <span className="block mt-2 text-zinc-500 dark:text-zinc-400">
+    If you complete it, the record stands. If you fail, the record still stands.
+  </span>
+</div>
+
             </div>
           </div>
         </div>
@@ -461,45 +466,70 @@ async function lockTrajectory(id: string | null) {
                       </div>
 
                       <div className="flex flex-col items-end gap-2">
-                        {!isLocked ? (
-                          <button
-                            type="button"
-                            className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-                            onClick={() => openLockModal(t)}
-                          >
-                            LOCK THIS
-                          </button>
-                        ) : (
-                          <div className="flex flex-col items-end gap-2">
-                            <span className="rounded-full border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
-                              Irreversible
-                            </span>
+                      {!isLocked ? (
+  <div className="flex flex-col items-end gap-2">
+    <button
+      type="button"
+      className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+      onClick={() => openLockModal(t)}
+    >
+      LOCK THIS
+    </button>
 
-                            <div className="flex gap-2">
-                              <button
-                                type="button"
-                                className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-                                onClick={() => openAmendModal(t, "MILESTONE")}
-                              >
-                                AMEND
-                              </button>
-                              <button
-                                type="button"
-                                className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-                                onClick={() => openAmendModal(t, "OUTCOME")}
-                              >
-                                OUTCOME
-                              </button>
-                              <button
-                                type="button"
-                                className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-                                onClick={() => openAmendModal(t, "DROP")}
-                              >
-                                DROP
-                              </button>
-                            </div>
-                          </div>
-                        )}
+    <button
+      type="button"
+      className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+      onClick={() => openAmendModal(t, "DROP")}
+    >
+      DROP
+    </button>
+
+    <div className="text-[11px] text-zinc-500 dark:text-zinc-400 text-right">
+      Drop discards a draft only.
+    </div>
+  </div>
+) : (
+  /* ← тут іде LOCKED-блок, який ти вже вставив */
+)}
+
+                       <div className="flex flex-col items-end gap-2">
+  <span className="rounded-full border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
+    Irreversible
+  </span>
+
+  {/* microcopy */}
+  <div className="text-[11px] text-zinc-600 dark:text-zinc-300 text-right">
+    <div className="font-semibold">Choose your next action</div>
+    <div className="opacity-80">Amend clarifies the record. Outcome finalizes it forever.</div>
+  </div>
+
+  <div className="flex gap-2">
+    <button
+      type="button"
+      className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+      onClick={() => openAmendModal(t, "MILESTONE")}
+      title="Clarify or add a factual milestone"
+    >
+      AMEND
+    </button>
+
+    <button
+      type="button"
+      className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+      onClick={() => openAmendModal(t, "OUTCOME")}
+      title="Record the final outcome (finalizes forever)"
+    >
+      OUTCOME
+    </button>
+
+    {/* DROP removed for locked records */}
+  </div>
+
+  <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400 text-right">
+    Once an outcome is recorded, this lock becomes final and cannot be changed.
+  </div>
+</div>
+
                       </div>
                     </div>
                   </div>
@@ -747,10 +777,9 @@ async function lockTrajectory(id: string | null) {
                     onChange={(e) => setAmendKind(e.target.value as AmendmentKind)}
                     className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
                   >
-                   <option value="MILESTONE">MILESTONE — factual milestone</option>
+                   <option value="MILESTONE">AMEND — clarification / milestone</option>
   <option value="OUTCOME">OUTCOME — final result</option>
-  <option value="DROP">DROP — stopped / abandoned</option>
-  <option value="NOTE">NOTE — short note</option>
+   <option value="NOTE">NOTE — short note</option>
                   </select>
                 </div>
 
@@ -761,13 +790,12 @@ async function lockTrajectory(id: string | null) {
                     onChange={(e) => setAmendBody(e.target.value)}
                     className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
                     rows={4}
-                    placeholder={
-                      amendKind === "DROP"
-                        ? "Why did you drop it? What changed? (facts only)"
-                        : amendKind === "OUTCOME"
-                        ? "Outcome (facts): done / partial / failed + what happened"
-                        : "What happened? (facts)"
-                    }
+              placeholder={
+  amendKind === "OUTCOME"
+    ? "Outcome (facts): success / fail + what happened (no excuses, just facts)"
+    : "What happened? (facts)"
+}
+
                   />
                 </div>
 
