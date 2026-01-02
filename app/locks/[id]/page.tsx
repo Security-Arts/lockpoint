@@ -99,28 +99,36 @@ export default function LockPage() {
               </div>
             )}
 
-            {lock.status === "active" ? (
-              <div style={{ display: "grid", gap: 10 }}>
-                <button onClick={declareCompleted} disabled={busy} style={btn}>
-                  Declare Completed
-                </button>
-                <button onClick={breakLock} disabled={busy} style={btnDanger}>
-                  Break Lock
-                </button>
-              </div>
-            ) : (
-              <div style={card}>
-                <div style={{ fontWeight: 650 }}>Final status</div>
-                <div style={{ opacity: 0.8, marginTop: 6 }}>
-                  {lock.status === "completed" && (
-                    <>Completed at {new Date(lock.completed_at!).toLocaleString()}</>
-                  )}
-                  {lock.status === "broken" && (
-                    <>Broken at {new Date(lock.broken_at!).toLocaleString()}</>
-                  )}
-                </div>
-              </div>
-            )}
+        {lock.status === "active" ? (
+  <div style={{ display: "grid", gap: 10 }}>
+    <button onClick={declareCompleted} disabled={busy} style={btn}>
+      Declare Completed
+    </button>
+    <button onClick={breakLock} disabled={busy} style={btnDanger}>
+      Break Lock
+    </button>
+  </div>
+) : (
+  <div style={card}>
+    <div style={{ fontWeight: 650, marginBottom: 6 }}>
+      Outcome: {lock.status.toUpperCase()}
+    </div>
+
+    <div style={{ opacity: 0.8 }}>
+      {lock.status === "completed" && lock.completed_at && (
+        <>Completed at {new Date(lock.completed_at).toLocaleString()}</>
+      )}
+
+      {lock.status === "broken" && lock.broken_at && (
+        <>Broken at {new Date(lock.broken_at).toLocaleString()}</>
+      )}
+    </div>
+
+    <div style={{ marginTop: 8, fontSize: 12, opacity: 0.6 }}>
+      This Lock is finalized and cannot be changed.
+    </div>
+  </div>
+)}
           </>
         )}
       </div>
