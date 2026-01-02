@@ -26,6 +26,15 @@ type TrajRow = {
   lock_reason: string | null;
 };
 
+type AmendRow = {
+  id: string;
+  trajectory_id: string;
+  kind: string | null;
+  created_at: string;
+  content: string | null;
+  body: string | null;
+};
+
 export default async function AdminPage({
   searchParams,
 }: {
@@ -62,27 +71,37 @@ export default async function AdminPage({
   const service = process.env.SUPABASE_SERVICE_ROLE_KEY!;
   const supabase = createClient(url, service, { auth: { persistSession: false } });
 
-  // Load trajectories (for metrics) + recent locks
-  const [{ data: all, error: allErr }, { data: recentLocks, error: locksErr }] =
-    await Promise.all([
-      supabase
-        .from("trajectories")
-        .select(
-          "id,title,status,created_at,locked_at,dropped_at,stake_amount,stake_currency,lock_reason"
-        )
-        .order("created_at", { ascending: false })
-        .limit(500),
-      supabase
-        .from("trajectories")
-        .select(
-          "id,title,status,created_at,locked_at,dropped_at,stake_amount,stake_currency,lock_reason"
-        )
-        .not("locked_at", "is", null)
-        .order("locked_at", { ascending: false })
-        .limit(10),
-    ]);
+  const [
+    { data: all, error: allErr },
+    { data: recentLocks, error: locksErr },
+    { data: outcomesRaw, error: outcomesErr },
+  ] = await Promise.all([
+    supabase
+      .from("trajectories")
+      .select(
+        "id,title,status,created_at,locked_at,dropped_at,stake_amount,stake_currency,lock_reason"
+      )
+      .order("created_at", { ascending: false })
+      .limit(500),
 
-  const err = allErr || locksErr;
+    supabase
+      .from("trajectories")
+      .select(
+        "id,title,status,created_at,locked_at,dropped_at,stake_amount,stake_currency,lock_reason"
+      )
+      .not("locked_at", "is", null)
+      .order("locked_at", { ascending: false })
+      .limit(10),
+
+    supabase
+      .from("trajectory_amendments")
+      .select("id,trajectory_id,kind,created_at,content,body")
+      .eq("kind", "OUTCOME")
+      .order("created_at", { ascending: false })
+      .limit(10),
+  ]);
+
+  const err = allErr || locksErr || outcomesErr;
   if (err) {
     return (
       <div style={{ padding: 40 }}>
@@ -94,13 +113,17 @@ export default async function AdminPage({
 
   const rows = (all ?? []) as TrajRow[];
   const locks = (recentLocks ?? []) as TrajRow[];
+  const outcomes = (outcomesRaw ?? []) as AmendRow[];
+
+  const trajById = new Map<string, TrajRow>();
+  for (const r of rows) trajById.set(r.id, r);
 
   const totalTraj = rows.length;
-  const totalLocks = rows.filter((r) => !!r.locked_at || (r.status ?? "").toLowerCase() === "locked")
-    .length;
+  const totalLocks = rows.filter(
+    (r) => !!r.locked_at || (r.status ?? "").toLowerCase() === "locked"
+  ).length;
   const drafts = rows.filter((r) => (r.status ?? "").toLowerCase() === "draft").length;
 
-  // Optional: define "active/completed/broken" if you later add statuses.
   const active = rows.filter((r) => (r.status ?? "").toLowerCase() === "active").length;
   const completed = rows.filter((r) => (r.status ?? "").toLowerCase() === "completed").length;
   const broken = rows.filter((r) => (r.status ?? "").toLowerCase() === "broken").length;
@@ -143,11 +166,17 @@ export default async function AdminPage({
                     {r.title || "(untitled)"}
                   </div>
                   <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
-                    <span style={mono}>{shortId(r.id)}</span>{" "}
-                    {" · locked "} {fmtDate(r.locked_at)}
+                    <span style={mono}>{shortId(r.id)}</span> {" · locked "} {fmtDate(r.locked_at)}
                   </div>
                   {r.lock_reason ? (
-                    <div style={{ fontSize: 12, opacity: 0.85, marginTop: 6, whiteSpace: "pre-wrap" }}>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        opacity: 0.85,
+                        marginTop: 6,
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
                       {r.lock_reason}
                     </div>
                   ) : null}
@@ -155,7 +184,9 @@ export default async function AdminPage({
 
                 <div style={{ textAlign: "right", fontSize: 12, opacity: 0.9 }}>
                   <div style={{ fontWeight: 650 }}>
-                    {r.stake_amount != null ? `${r.stake_amount} ${r.stake_currency || "USD"}` : "—"}
+                    {r.stake_amount != null
+                      ? `${r.stake_amount} ${r.stake_currency || "USD"}`
+                      : "—"}
                   </div>
                   <div style={{ opacity: 0.7, marginTop: 4 }}>stake</div>
                 </div>
@@ -169,9 +200,60 @@ export default async function AdminPage({
 
       <div style={card}>
         <div style={{ fontWeight: 700, marginBottom: 10 }}>Outcomes</div>
-        <div style={{ opacity: 0.75 }}>
-          (Will appear once you implement outcome tracking in DB/statuses.)
-        </div>
+
+        {outcomes.length === 0 ? (
+          <div style={{ opacity: 0.75 }}>No outcomes recorded yet.</div>
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {outcomes.map((o) => {
+              const t = trajById.get(o.trajectory_id);
+              const txt = (o.body ?? o.content ?? "").trim();
+
+              return (
+                <div key={o.id} style={lockRow}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 650, overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {t?.title || "(trajectory)"}
+                    </div>
+
+                    <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
+                      <span style={mono}>{shortId(o.trajectory_id)}</span>
+                      {" · outcome "} {fmtDate(o.created_at)}
+                      {t?.locked_at ? <>{" · locked "}{fmtDate(t.locked_at)}</> : null}
+                    </div>
+
+                    {txt ? (
+                      <div
+                        style={{
+                          fontSize: 12,
+                          opacity: 0.9,
+                          marginTop: 8,
+                          whiteSpace: "pre-wrap",
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        {txt}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 12, opacity: 0.75, marginTop: 8 }}>
+                        (empty outcome text)
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ textAlign: "right", fontSize: 12, opacity: 0.9 }}>
+                    <div style={{ fontWeight: 650 }}>
+                      {t?.stake_amount != null
+                        ? `${t.stake_amount} ${t.stake_currency || "USD"}`
+                        : "—"}
+                    </div>
+                    <div style={{ opacity: 0.7, marginTop: 4 }}>stake</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
