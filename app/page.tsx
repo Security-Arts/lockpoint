@@ -464,10 +464,6 @@ async function lockTrajectory(id: string | null) {
                           </div>
                         ) : null}
                       </div>
-
-                      <div className="flex flex-col items-end gap-2">
-    {!isLocked ? (
-<div className="flex flex-col items-end gap-2">
   {!isLocked ? (
     <div className="flex flex-col items-end gap-2">
       <button
