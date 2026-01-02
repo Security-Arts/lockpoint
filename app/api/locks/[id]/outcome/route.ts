@@ -75,14 +75,15 @@ export async function POST(
 
   if (evErr) {
     // This is the "already has outcome" case
-    if (String(evErr.message || "").toLowerCase().includes("duplicate")) {
+   const msg = String(evErr.message || "").toLowerCase();
+ if (msg.includes("duplicate") || msg.includes("unique")) {
       return NextResponse.json({ ok: false, error: "Outcome already submitted" }, { status: 409 });
     }
     return NextResponse.json({ ok: false, error: evErr.message }, { status: 500 });
   }
 
   // 4) finalize lock status
-  const newStatus = normalized === "success" ? "completed" : "failed";
+  const newStatus = normalized === "success" ? "completed" : "broken";
   const { error: upErr } = await supabaseAdmin
     .from("locks")
     .update({ status: newStatus })
