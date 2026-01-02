@@ -464,8 +464,9 @@ async function lockTrajectory(id: string | null) {
                           </div>
                         ) : null}
                       </div>
+ <div className="flex flex-col items-end gap-2">
   {!isLocked ? (
-    <div className="flex flex-col items-end gap-2">
+    <>
       <button
         type="button"
         className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
@@ -485,9 +486,9 @@ async function lockTrajectory(id: string | null) {
       <div className="text-[11px] text-zinc-500 dark:text-zinc-400 text-right">
         Drop discards a draft only.
       </div>
-    </div>
+    </>
   ) : (
-    <div className="flex flex-col items-end gap-2">
+    <>
       <span className="rounded-full border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
         Irreversible
       </span>
@@ -522,16 +523,16 @@ async function lockTrajectory(id: string | null) {
       <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400 text-right">
         Once an outcome is recorded, this lock becomes final and cannot be changed.
       </div>
-    </div>
+    </>
   )}
 </div>
 </div>
 </div>
-                );
-              })
-            )}
-          </div>
-        </div>
+);
+})
+)}
+</div>
+</div>
 
         {/* Lock modal */}
         {lockOpen && lockId && (
