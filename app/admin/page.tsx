@@ -32,8 +32,7 @@ type AmendRow = {
   kind: string | null;
   created_at: string;
   content: string | null;
-  body: string | null;
-};
+ };
 
 export default async function AdminPage({
   searchParams,
@@ -95,7 +94,7 @@ export default async function AdminPage({
 
     supabase
       .from("trajectory_amendments")
-      .select("id,trajectory_id,kind,created_at,content,body")
+      .select("id,trajectory_id,kind,created_at,content")
       .eq("kind", "OUTCOME")
       .order("created_at", { ascending: false })
       .limit(10),
@@ -207,7 +206,7 @@ export default async function AdminPage({
           <div style={{ display: "grid", gap: 10 }}>
             {outcomes.map((o) => {
               const t = trajById.get(o.trajectory_id);
-              const txt = (o.body ?? o.content ?? "").trim();
+             const txt = (o.content ?? "").trim();
 
               return (
                 <div key={o.id} style={lockRow}>
