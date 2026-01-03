@@ -96,6 +96,11 @@ export default function Home() {
       amendBody.trim().length >= 5,
     [amendConfirm, amendBody]
   );
+const canCreateDraft = useMemo(() => {
+  const t = draftTitle.trim();
+  const c = draftCommitment.trim();
+  return t.length >= 3 && c.length >= 8;
+}, [draftTitle, draftCommitment]);
 
   async function loadLatest() {
     setLoadingList(true);
@@ -395,7 +400,7 @@ async function addAmendment() {
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || !canCreateDraft}
               onClick={createTrajectory}
               className="h-12 rounded-full bg-zinc-900 px-6 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
             >
@@ -407,6 +412,9 @@ async function addAmendment() {
                 {toast}
               </div>
             )}
+            <div className="text-xs text-zinc-500 dark:text-zinc-400">
+  Minimum: title ≥ 3 chars, statement ≥ 8 chars.
+</div>
           </div>
         </div>
 
