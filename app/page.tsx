@@ -141,12 +141,16 @@ export default function Home() {
     const title = draftTitle.trim();
     const commitment = draftCommitment.trim();
 
-    if (title.length < 3 || commitment.length < 8) {
-      setToast("Draft needs a title and a commitment statement.");
-      setBusy(false);
-      return;
-    }
-
+   if (title.length < 3) {
+  setToast("Title must be at least 3 characters.");
+  setBusy(false);
+  return;
+}
+if (commitment.length < 8) {
+  setToast("Commitment statement must be at least 8 characters.");
+  setBusy(false);
+  return;
+}
     const { data, error } = await supabase
       .from("trajectories")
       .insert({
