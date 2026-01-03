@@ -1,8 +1,7 @@
 "use client";
-
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
-
+import Link from "next/link";
 type Trajectory = {
   id: string;
   title: string;
@@ -368,6 +367,18 @@ const canAmend = useMemo(() => {
         <p className="mt-3 text-lg leading-8 text-zinc-700 dark:text-zinc-200">
           <strong>Where decisions become irreversible futures.</strong>
         </p>
+<div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+  <Link
+    href="/me"
+    className="inline-flex h-10 items-center justify-center rounded-full border border-zinc-200 bg-white px-5 text-sm font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+  >
+    My cabinet →
+  </Link>
+
+  <span className="text-xs text-zinc-500 dark:text-zinc-400">
+    Your drafts and locked records
+  </span>
+</div>
 
         <p className="mt-6 text-base leading-7 text-zinc-700 dark:text-zinc-200">
           Create a draft trajectory. When you reach the lockpoint, you lock it. After lock:{" "}
