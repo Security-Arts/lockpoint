@@ -291,7 +291,7 @@ const card: React.CSSProperties = {
 const refreshLink: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 650,
-  textDecoration *as any*: "none",
+  textDecoration: "none",
   borderBottom: "1px solid rgba(0,0,0,0.35)",
   paddingBottom: 2,
 };
