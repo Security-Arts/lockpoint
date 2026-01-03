@@ -65,6 +65,9 @@ export default function Home() {
   const [amendBody, setAmendBody] = useState("");
   const [amendConfirm, setAmendConfirm] = useState("");
 
+  // ✅ Outcome choice (for OUTCOME kind)
+  const [outcomeResult, setOutcomeResult] = useState<"COMPLETED" | "FAILED">("COMPLETED");
+
   const canLockTyped = useMemo(
     () => confirmText.trim().toUpperCase() === "LOCK",
     [confirmText]
@@ -96,11 +99,13 @@ export default function Home() {
       amendBody.trim().length >= 5,
     [amendConfirm, amendBody]
   );
-const canCreateDraft = useMemo(() => {
-  const t = draftTitle.trim();
-  const c = draftCommitment.trim();
-  return t.length >= 3 && c.length >= 8;
-}, [draftTitle, draftCommitment]);
+
+  // ✅ Create draft validity
+  const canCreateDraft = useMemo(() => {
+    const t = draftTitle.trim();
+    const c = draftCommitment.trim();
+    return t.length >= 3 && c.length >= 8;
+  }, [draftTitle, draftCommitment]);
 
   async function loadLatest() {
     setLoadingList(true);
@@ -140,22 +145,25 @@ const canCreateDraft = useMemo(() => {
   }, []);
 
   async function createTrajectory() {
+    if (busy) return;
     setBusy(true);
     setToast(null);
 
     const title = draftTitle.trim();
     const commitment = draftCommitment.trim();
 
-   if (title.length < 3) {
-  setToast("Title must be at least 3 characters.");
-  setBusy(false);
-  return;
-}
-if (commitment.length < 8) {
-  setToast("Commitment statement must be at least 8 characters.");
-  setBusy(false);
-  return;
-}
+    // ✅ precise messages
+    if (title.length < 3) {
+      setToast("Title must be at least 3 characters.");
+      setBusy(false);
+      return;
+    }
+    if (commitment.length < 8) {
+      setToast("Commitment statement must be at least 8 characters.");
+      setBusy(false);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("trajectories")
       .insert({
@@ -182,6 +190,8 @@ if (commitment.length < 8) {
   }
 
   function openLockModal(t: Trajectory) {
+    setToast(null); // ✅ prevents "Draft created..." showing inside lock modal footer
+
     setLockId(t.id);
     setLockOpen(true);
     setReason("");
@@ -194,116 +204,142 @@ if (commitment.length < 8) {
     setLockCoreCommitment(t.commitment ?? "");
   }
 
-async function lockTrajectory(id: string | null) {
-  if (!id) {
-    setToast("Internal error: missing trajectory id");
-    return;
-  }
-  if (lockLoading) return;
-  setLockLoading(true);
-  setToast(null);
+  async function lockTrajectory(id: string | null) {
+    if (!id) {
+      setToast("Internal error: missing trajectory id");
+      return;
+    }
+    if (lockLoading) return;
+    setLockLoading(true);
+    setToast(null);
 
-  const title = lockCoreTitle.trim();
-  const commitment = lockCoreCommitment.trim();
+    const title = lockCoreTitle.trim();
+    const commitment = lockCoreCommitment.trim();
 
-  if (title.length < 3 || commitment.length < 8) {
-    setToast("Lock requires a title and a commitment statement.");
+    if (title.length < 3 || commitment.length < 8) {
+      setToast("Lock requires a title (≥3) and a commitment statement (≥8).");
+      setLockLoading(false);
+      return;
+    }
+    if (!canLockTyped) {
+      setToast('Type "LOCK" to proceed.');
+      setLockLoading(false);
+      return;
+    }
+
+    // ✅ IMPORTANT: persist stake + reason in DB
+    const payload: Record<string, any> = {
+      title,
+      commitment,
+      status: "locked",
+      locked_at: new Date().toISOString(),
+      stake_amount: stakeAmount ?? null,
+      stake_currency: stakeAmount ? "USD" : null,
+      lock_reason: reason?.trim() ? reason.trim() : null,
+    };
+
+    const { error } = await supabase.from("trajectories").update(payload).eq("id", id);
+
+    if (error) {
+      console.error("Lock error:", error);
+      setToast("Lock error: " + error.message);
+      setLockLoading(false);
+      return;
+    }
+
+    setToast("LOCKED · irreversible");
+    setLockOpen(false);
+    setLockId(null);
+
+    setReason("");
+    setConfirmText("");
+    setStakePreset(null);
+    setStakeCustom("");
+
+    await loadLatest();
     setLockLoading(false);
-    return;
   }
-  if (!canLockTyped) {
-    setToast('Type "LOCK" to proceed.');
-    setLockLoading(false);
-    return;
-  }
-
-  // ✅ IMPORTANT: persist stake + reason in DB
-  const payload: Record<string, any> = {
-    title,
-    commitment,
-    status: "locked",
-    locked_at: new Date().toISOString(),
-    stake_amount: stakeAmount ?? null,
-    stake_currency: stakeAmount ? "USD" : null,
-    lock_reason: reason?.trim() ? reason.trim() : null,
-  };
-
-  const { error } = await supabase.from("trajectories").update(payload).eq("id", id);
-
-  if (error) {
-    console.error("Lock error:", error);
-    setToast("Lock error: " + error.message);
-    setLockLoading(false);
-    return;
-  }
-
-  setToast("LOCKED · irreversible");
-  setLockOpen(false);
-  setLockId(null);
-
-  setReason("");
-  setConfirmText("");
-  setStakePreset(null);
-  setStakeCustom("");
-
-  await loadLatest();
-  setLockLoading(false);
-}
 
   function openAmendModal(t: Trajectory, kind: AmendmentKind = "MILESTONE") {
+    setToast(null);
     setAmendTrajectoryId(t.id);
     setAmendKind(kind);
     setAmendBody("");
     setAmendConfirm("");
+    if (kind === "OUTCOME") setOutcomeResult("COMPLETED"); // ✅ reset
     setAmendOpen(true);
   }
 
-async function addAmendment() {
-  if (!amendTrajectoryId) return;
+  async function addAmendment() {
+    if (!amendTrajectoryId) return;
 
-  setToast(null);
+    setToast(null);
 
-  const content = amendBody.trim();
+    const contentRaw = amendBody.trim();
 
-  if (content.length < 5) {
-    setToast("Amendment text is too short.");
-    return;
+    if (contentRaw.length < 5) {
+      setToast("Amendment text is too short.");
+      return;
+    }
+    if (amendConfirm.trim().toUpperCase() !== "AMEND") {
+      setToast('Type "AMEND" to proceed.');
+      return;
+    }
+
+    // ✅ If OUTCOME — finalize trajectory status permanently
+    if (amendKind === "OUTCOME") {
+      const finalStatus = outcomeResult === "COMPLETED" ? "completed" : "failed";
+
+      const { error: outErr } = await supabase
+        .from("trajectories")
+        .update({
+          status: finalStatus,
+        })
+        .eq("id", amendTrajectoryId);
+
+      if (outErr) {
+        console.error(outErr);
+        setToast("Outcome error: " + outErr.message);
+        return;
+      }
+    }
+
+    // store amendment log (for OUTCOME we prefix result)
+    const content =
+      amendKind === "OUTCOME"
+        ? `[${outcomeResult}] ${contentRaw}`
+        : contentRaw;
+
+    const { error } = await supabase.from("trajectory_amendments").insert({
+      trajectory_id: amendTrajectoryId,
+      kind: amendKind,
+      content,
+    });
+
+    if (error) {
+      console.error(error);
+      setToast("Amendment error: " + error.message);
+      return;
+    }
+
+    // if DROP — mark trajectory dropped_at
+    if (amendKind === "DROP") {
+      const { error: dropErr } = await supabase
+        .from("trajectories")
+        .update({ dropped_at: new Date().toISOString() })
+        .eq("id", amendTrajectoryId);
+
+      if (dropErr) console.warn("dropped_at update warn:", dropErr.message);
+    }
+
+    setToast(`${amendKind} recorded`);
+    setAmendOpen(false);
+    setAmendTrajectoryId(null);
+    setAmendBody("");
+    setAmendConfirm("");
+
+    await loadLatest();
   }
-  if (amendConfirm.trim().toUpperCase() !== "AMEND") {
-    setToast('Type "AMEND" to proceed.');
-    return;
-  }
-
-  const { error } = await supabase.from("trajectory_amendments").insert({
-    trajectory_id: amendTrajectoryId,
-    kind: amendKind,
-    content, // ✅ одна колонка
-  });
-
-  if (error) {
-    console.error(error);
-    setToast("Amendment error: " + error.message);
-    return;
-  }
-
-  // якщо це DROP — помічаємо траєкторію
-  if (amendKind === "DROP") {
-    const { error: dropErr } = await supabase
-      .from("trajectories")
-      .update({ dropped_at: new Date().toISOString() })
-      .eq("id", amendTrajectoryId);
-
-    if (dropErr) console.warn("dropped_at update warn:", dropErr.message);
-  }
-
-  setToast(`${amendKind} recorded`);
-  setAmendOpen(false);
-  setAmendTrajectoryId(null);
-  setAmendBody("");
-  setAmendConfirm("");
-
-  await loadLatest();
-}
 
   const SYSTEM_FORMULA = (
     <>
@@ -343,13 +379,12 @@ async function addAmendment() {
             <div>
               <div className="text-xl font-semibold leading-snug tracking-tight">{SYSTEM_FORMULA}</div>
               <div className="mt-2 text-xs text-zinc-600 dark:text-zinc-300">
-  <span className="font-semibold">Lockpoint is not a planner, tracker, or coach.</span>{" "}
-  It records a commitment, locks it in time, and later records the outcome — unchanged, forever.
-  <span className="block mt-2 text-zinc-500 dark:text-zinc-400">
-    If you complete it, the record stands. If you fail, the record still stands.
-  </span>
-</div>
-
+                <span className="font-semibold">Lockpoint is not a planner, tracker, or coach.</span>{" "}
+                It records a commitment, locks it in time, and later records the outcome — unchanged, forever.
+                <span className="block mt-2 text-zinc-500 dark:text-zinc-400">
+                  If you complete it, the record stands. If you fail, the record still stands.
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -397,6 +432,10 @@ async function addAmendment() {
             />
           </div>
 
+          <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+            Minimum: title ≥ 3 chars, statement ≥ 8 chars.
+          </div>
+
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
             <button
               type="button"
@@ -412,9 +451,6 @@ async function addAmendment() {
                 {toast}
               </div>
             )}
-            <div className="text-xs text-zinc-500 dark:text-zinc-400">
-  Minimum: title ≥ 3 chars, statement ≥ 8 chars.
-</div>
           </div>
         </div>
 
@@ -432,7 +468,9 @@ async function addAmendment() {
               <div className="text-sm text-zinc-600 dark:text-zinc-300">No trajectories yet.</div>
             ) : (
               items.map((t) => {
-                const isLocked = (t.status ?? "").toLowerCase() === "locked" || !!t.locked_at;
+                const status = String(t.status || "").toLowerCase();
+                const isLocked = status === "locked" || !!t.locked_at;
+                const isFinal = status === "completed" || status === "failed";
 
                 return (
                   <div
@@ -451,7 +489,9 @@ async function addAmendment() {
                         <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
                           <span className="font-mono">{shortId(t.id)}</span>
                           {" · "}
-                          <span className="uppercase tracking-wide">{isLocked ? "LOCKED" : "DRAFT"}</span>
+                          <span className="uppercase tracking-wide">
+                            {t.status ? String(t.status).toUpperCase() : isLocked ? "LOCKED" : "DRAFT"}
+                          </span>
                           {" · "}
                           <span className="text-zinc-500 dark:text-zinc-400">
                             created {fmtDate(t.created_at)}
@@ -481,75 +521,84 @@ async function addAmendment() {
                           </div>
                         ) : null}
                       </div>
- <div className="flex flex-col items-end gap-2">
-  {!isLocked ? (
-    <>
-      <button
-        type="button"
-        className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-        onClick={() => openLockModal(t)}
-      >
-        LOCK THIS
-      </button>
 
-      <button
-        type="button"
-        className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-        onClick={() => openAmendModal(t, "DROP")}
-      >
-        DROP
-      </button>
+                      <div className="flex flex-col items-end gap-2">
+                        {!isLocked ? (
+                          <>
+                            <button
+                              type="button"
+                              className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                              onClick={() => openLockModal(t)}
+                            >
+                              LOCK THIS
+                            </button>
 
-      <div className="text-[11px] text-zinc-500 dark:text-zinc-400 text-right">
-        Drop discards a draft only.
-      </div>
-    </>
-  ) : (
-    <>
-      <span className="rounded-full border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
-        Irreversible
-      </span>
+                            <button
+                              type="button"
+                              className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                              onClick={() => openAmendModal(t, "DROP")}
+                            >
+                              DROP
+                            </button>
 
-      <div className="text-[11px] text-zinc-600 dark:text-zinc-300 text-right">
-        <div className="font-semibold">Choose your next action</div>
-        <div className="opacity-80">
-          Amend clarifies the record. Outcome finalizes it forever.
+                            <div className="text-[11px] text-zinc-500 dark:text-zinc-400 text-right">
+                              Drop discards a draft only.
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <span className="rounded-full border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
+                              {isFinal ? "Final" : "Irreversible"}
+                            </span>
+
+                            {!isFinal ? (
+                              <>
+                                <div className="text-[11px] text-zinc-600 dark:text-zinc-300 text-right">
+                                  <div className="font-semibold">Choose your next action</div>
+                                  <div className="opacity-80">
+                                    Amend clarifies the record. Outcome finalizes it forever.
+                                  </div>
+                                </div>
+
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                                    onClick={() => openAmendModal(t, "MILESTONE")}
+                                    title="Clarify or add a factual milestone"
+                                  >
+                                    AMEND
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                                    onClick={() => openAmendModal(t, "OUTCOME")}
+                                    title="Record the final outcome (finalizes forever)"
+                                  >
+                                    OUTCOME
+                                  </button>
+                                </div>
+
+                                <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400 text-right">
+                                  Once an outcome is recorded, this lock becomes final and cannot be changed.
+                                </div>
+                              </>
+                            ) : (
+                              <div className="text-[11px] text-zinc-500 dark:text-zinc-400 text-right">
+                                This record is finalized.
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
-      </div>
-
-      <div className="flex gap-2">
-        <button
-          type="button"
-          className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-          onClick={() => openAmendModal(t, "MILESTONE")}
-          title="Clarify or add a factual milestone"
-        >
-          AMEND
-        </button>
-
-        <button
-          type="button"
-          className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-          onClick={() => openAmendModal(t, "OUTCOME")}
-          title="Record the final outcome (finalizes forever)"
-        >
-          OUTCOME
-        </button>
-      </div>
-
-      <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400 text-right">
-        Once an outcome is recorded, this lock becomes final and cannot be changed.
-      </div>
-    </>
-  )}
-</div>
-</div>
-</div>
-);
-})
-)}
-</div>
-</div>
 
         {/* Lock modal */}
         {lockOpen && lockId && (
@@ -590,7 +639,7 @@ async function addAmendment() {
                   </button>
                 </div>
 
-                {/* ядро */}
+                {/* core */}
                 <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
                   <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">
                     Commitment core (required)
@@ -786,14 +835,60 @@ async function addAmendment() {
                   <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">Type</label>
                   <select
                     value={amendKind}
-                    onChange={(e) => setAmendKind(e.target.value as AmendmentKind)}
+                    onChange={(e) => {
+                      const k = e.target.value as AmendmentKind;
+                      setAmendKind(k);
+                      if (k === "OUTCOME") setOutcomeResult("COMPLETED");
+                    }}
                     className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
                   >
-                   <option value="MILESTONE">AMEND — clarification / milestone</option>
-  <option value="OUTCOME">OUTCOME — final result</option>
-   <option value="NOTE">NOTE — short note</option>
+                    <option value="MILESTONE">AMEND — clarification / milestone</option>
+                    <option value="OUTCOME">OUTCOME — final result</option>
+                    <option value="NOTE">NOTE — short note</option>
+                    <option value="DROP">DROP — discard draft</option>
                   </select>
                 </div>
+
+                {/* ✅ Outcome selector */}
+                {amendKind === "OUTCOME" && (
+                  <div className="mt-4">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
+                      Outcome
+                    </label>
+
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setOutcomeResult("COMPLETED")}
+                        className={[
+                          "h-9 rounded-full border px-4 text-xs font-medium transition",
+                          outcomeResult === "COMPLETED"
+                            ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-black"
+                            : "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50 dark:border-white/10 dark:bg-black/20 dark:text-zinc-200 dark:hover:bg-white/10",
+                        ].join(" ")}
+                      >
+                        ✅ Completed
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setOutcomeResult("FAILED")}
+                        className={[
+                          "h-9 rounded-full border px-4 text-xs font-medium transition",
+                          outcomeResult === "FAILED"
+                            ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-black"
+                            : "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50 dark:border-white/10 dark:bg-black/20 dark:text-zinc-200 dark:hover:bg-white/10",
+                        ].join(" ")}
+                      >
+                        ❌ Failed
+                      </button>
+                    </div>
+
+                    <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+                      This will permanently finalize the record.
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-4">
                   <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">Text</label>
@@ -802,12 +897,13 @@ async function addAmendment() {
                     onChange={(e) => setAmendBody(e.target.value)}
                     className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
                     rows={4}
-              placeholder={
-  amendKind === "OUTCOME"
-    ? "Outcome (facts): success / fail + what happened (no excuses, just facts)"
-    : "What happened? (facts)"
-}
-
+                    placeholder={
+                      amendKind === "OUTCOME"
+                        ? "Outcome note (facts): what happened. One sentence."
+                        : amendKind === "DROP"
+                        ? "Why are you dropping this draft? (facts)"
+                        : "What happened? (facts)"
+                    }
                   />
                 </div>
 
@@ -839,6 +935,12 @@ async function addAmendment() {
                     RECORD AMENDMENT
                   </button>
                 </div>
+
+                {toast && (
+                  <div className="mt-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
+                    {toast}
+                  </div>
+                )}
 
                 <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
                   Current time will be recorded.
