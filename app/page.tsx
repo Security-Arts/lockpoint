@@ -93,12 +93,14 @@ export default function Home() {
     return `$${stakeAmount}`;
   }, [stakeAmount]);
 
-  const canAmend = useMemo(
-    () =>
-      amendConfirm.trim().toUpperCase() === "AMEND" &&
-      amendBody.trim().length >= 5,
-    [amendConfirm, amendBody]
-  );
+const canAmend = useMemo(() => {
+  const okWord = amendConfirm.trim().toUpperCase() === "AMEND";
+  const len = amendBody.trim().length;
+
+  const minLen = amendKind === "DROP" ? 1 : 5; // ✅ DROP простіше
+  return okWord && len >= minLen;
+}, [amendConfirm, amendBody, amendKind]);
+
 
   // ✅ Create draft validity
   const canCreateDraft = useMemo(() => {
