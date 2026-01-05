@@ -381,8 +381,6 @@ const canAmend = useMemo(() => {
     Your drafts and locked records
   </span>
 </div>
-  </AuthGate>
-);
         <p className="mt-6 text-base leading-7 text-zinc-700 dark:text-zinc-200">
           Create a draft trajectory. When you reach the lockpoint, you lock it. After lock:{" "}
           <strong>no edits</strong>, <strong>no deletes</strong> — <strong>amendments only</strong>.
@@ -404,7 +402,8 @@ const canAmend = useMemo(() => {
             </div>
           </div>
         </div>
-
+  </AuthGate>
+);
         {/* Examples */}
         <div className="mt-8 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
           <div className="text-sm font-semibold">Examples of locked trajectories</div>
