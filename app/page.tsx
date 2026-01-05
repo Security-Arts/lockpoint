@@ -402,8 +402,7 @@ const canAmend = useMemo(() => {
             </div>
           </div>
         </div>
-  </AuthGate>
-);
+
         {/* Examples */}
         <div className="mt-8 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
           <div className="text-sm font-semibold">Examples of locked trajectories</div>
@@ -966,5 +965,6 @@ const canAmend = useMemo(() => {
         )}
       </main>
     </div>
+        </AuthGate>
   );
 }
