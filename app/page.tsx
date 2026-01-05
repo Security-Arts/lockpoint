@@ -361,8 +361,7 @@ const canAmend = useMemo(() => {
   ];
 
   return (
-    <AuthGate>
-    <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
+        <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
       <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col justify-center px-6 py-24">
         <h1 className="text-4xl font-semibold leading-tight tracking-tight">Lockpoint</h1>
 
@@ -965,6 +964,5 @@ const canAmend = useMemo(() => {
         )}
       </main>
     </div>
-        </AuthGate>
-  );
+        );
 }
