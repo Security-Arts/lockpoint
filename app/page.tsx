@@ -1,4 +1,5 @@
 "use client";
+import { AuthGate } from "@/components/AuthGate";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
@@ -360,6 +361,7 @@ const canAmend = useMemo(() => {
   ];
 
   return (
+    <AuthGate>
     <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
       <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col justify-center px-6 py-24">
         <h1 className="text-4xl font-semibold leading-tight tracking-tight">Lockpoint</h1>
@@ -379,7 +381,8 @@ const canAmend = useMemo(() => {
     Your drafts and locked records
   </span>
 </div>
-
+  </AuthGate>
+);
         <p className="mt-6 text-base leading-7 text-zinc-700 dark:text-zinc-200">
           Create a draft trajectory. When you reach the lockpoint, you lock it. After lock:{" "}
           <strong>no edits</strong>, <strong>no deletes</strong> — <strong>amendments only</strong>.
