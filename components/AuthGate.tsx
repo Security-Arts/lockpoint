@@ -1,81 +1,62 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        setAuthed(!!data.session);
-        setReady(true);
-      })
-      .catch((e) => {
-        setErr(String(e?.message || e));
-        setReady(true);
-      });
+    supabase.auth.getSession().then(({ data }) => {
+      const ok = !!data.session;
+      setAuthed(ok);
+      setReady(true);
+
+      // ✅ після логіну з головної → /me
+      if (ok && window.location.pathname === "/") {
+        router.replace("/me");
+      }
+    });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      setAuthed(!!session);
+      const ok = !!session;
+      setAuthed(ok);
       setReady(true);
+
+      if (ok && window.location.pathname === "/") {
+        router.replace("/me");
+      }
     });
 
     return () => sub.subscription.unsubscribe();
-  }, []);
+  }, [router]);
 
-  if (!ready) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center p-6">
-        Loading…
-      </div>
-    );
-  }
+  if (!ready) return <div style={{ padding: 24 }}>Loading…</div>;
 
   if (!authed) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center p-6">
-        <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/5 p-6">
-          <h1 className="text-xl font-semibold">Lockpoint</h1>
-          <p className="mt-2 text-sm text-white/70">
-            Sign in to create and seal Locks.
-          </p>
+      <div style={{ maxWidth: 420, margin: "60px auto", padding: 24 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700 }}>Lockpoint</h1>
+        <p style={{ opacity: 0.8, marginTop: 8 }}>
+          Sign in to create and seal Locks.
+        </p>
 
-          <div className="mt-5 grid gap-3">
-            <button
-              onClick={() => {
-                setErr(null);
-                supabase.auth.signInWithOAuth({ provider: "google" }).catch((e) => {
-                  setErr(String(e?.message || e));
-                });
-              }}
-              className="h-11 rounded-full bg-white text-black text-sm font-medium hover:bg-zinc-200"
-            >
-              Continue with Google
-            </button>
-
-            <button
-              onClick={() => {
-                setErr(null);
-                supabase.auth.signInWithOAuth({ provider: "github" }).catch((e) => {
-                  setErr(String(e?.message || e));
-                });
-              }}
-              className="h-11 rounded-full border border-white/15 bg-white/10 text-white text-sm font-medium hover:bg-white/15"
-            >
-              Continue with GitHub
-            </button>
-          </div>
-
-          {err && (
-            <div className="mt-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-xs text-white/80">
-              {err}
-            </div>
-          )}
+        <div style={{ marginTop: 16, display: "grid", gap: 8 }}>
+          <button
+            onClick={() => supabase.auth.signInWithOAuth({ provider: "google" })}
+            style={btn}
+          >
+            Continue with Google
+          </button>
+          <button
+            onClick={() => supabase.auth.signInWithOAuth({ provider: "github" })}
+            style={btn}
+          >
+            Continue with GitHub
+          </button>
         </div>
       </div>
     );
@@ -83,3 +64,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   return <>{children}</>;
 }
+
+const btn: React.CSSProperties = {
+  padding: "10px 12px",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.15)",
+  background: "rgba(255,255,255,0.06)",
+  color: "white",
+  cursor: "pointer",
+};
