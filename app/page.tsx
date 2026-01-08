@@ -165,17 +165,26 @@ const canAmend = useMemo(() => {
       setBusy(false);
       return;
     }
+   const { data: u } = await supabase.auth.getUser();
+const uid = u.user?.id;
 
-    const { data, error } = await supabase
-      .from("trajectories")
-      .insert({
-        title,
-        commitment,
-        summary: null,
-        status: "draft",
-      })
-      .select("id")
-      .single();
+if (!uid) {
+  setToast("Not authenticated");
+  setBusy(false);
+  return;
+}
+
+const { data, error } = await supabase
+  .from("trajectories")
+  .insert({
+    owner_id: uid,
+    title,
+    commitment,
+    summary: null,
+    status: "draft",
+  })
+  .select("id")
+  .single();
 
     if (error) {
       console.error(error);
