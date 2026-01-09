@@ -163,58 +163,66 @@ const canAmend = useMemo(() => {
   }, []);
 
   async function createTrajectory() {
-    if (busy) return;
-    setBusy(true);
-    setToast(null);
+  if (busy) return;
+  setBusy(true);
+  setToast(null);
 
-    const title = draftTitle.trim();
-    const commitment = draftCommitment.trim();
+  const title = draftTitle.trim();
+  const commitment = draftCommitment.trim();
 
-    // ✅ precise messages
-    if (title.length < 3) {
-      setToast("Title must be at least 3 characters.");
-      setBusy(false);
-      return;
-    }
-    if (commitment.length < 8) {
-      setToast("Commitment statement must be at least 8 characters.");
-      setBusy(false);
-      return;
-    }
-   const { data: u } = await supabase.auth.getUser();
-const uid = u.user?.id;
-
-if (!uid) {
-  setToast("Not authenticated");
-  setBusy(false);
-  return;
-}
-
-const { data, error } = await supabase
-  .from("trajectories")
-  .insert({
-    owner_id: uid,
-    title,
-    commitment,
-    summary: null,
-    status: "draft",
-  })
-  .select("id")
-  .single();
-
-    if (error) {
-      console.error(error);
-      setToast("Create error: " + error.message);
-      setBusy(false);
-      return;
-    }
-
-    setToast(`Draft created: ${shortId(data.id)}`);
-    setDraftTitle("");
-    setDraftCommitment("");
-    await loadLatest();
+  // ✅ precise messages
+  if (title.length < 3) {
+    setToast("Title must be at least 3 characters.");
     setBusy(false);
+    return;
   }
+  if (commitment.length < 8) {
+    setToast("Commitment statement must be at least 8 characters.");
+    setBusy(false);
+    return;
+  }
+
+  // ✅ require auth before creating a draft
+  const { data: u, error: userErr } = await supabase.auth.getUser();
+  if (userErr) {
+    console.error(userErr);
+    setToast("Auth error: " + userErr.message);
+    setBusy(false);
+    return;
+  }
+
+  const uid = u.user?.id;
+  if (!uid) {
+    setToast("Please sign in to create a draft.");
+    setBusy(false);
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("trajectories")
+    .insert({
+      title,
+      commitment,
+      summary: null,
+      status: "draft",
+      // owner_id НЕ передаємо — DB ставить default auth.uid()
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    console.error(error);
+    setToast("Create error: " + error.message);
+    setBusy(false);
+    return;
+  }
+
+  setToast(`Draft created: ${shortId(data.id)}`);
+  setDraftTitle("");
+  setDraftCommitment("");
+  await loadLatest();
+  setBusy(false);
+}
 
   function openLockModal(t: Trajectory) {
     setToast(null); // ✅ prevents "Draft created..." showing inside lock modal footer
