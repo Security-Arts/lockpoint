@@ -36,7 +36,10 @@ export default function Home() {
 
   const [items, setItems] = useState<Trajectory[]>([]);
   const [loadingList, setLoadingList] = useState(true);
+
+  // ✅ Auth state (single source of truth)
   const [session, setSession] = useState<any>(null);
+  const [authReady, setAuthReady] = useState(false);
   const authed = !!session?.user;
 
   // Draft inputs
@@ -66,30 +69,37 @@ export default function Home() {
   const [amendKind, setAmendKind] = useState<AmendmentKind>("MILESTONE");
   const [amendBody, setAmendBody] = useState("");
   const [amendConfirm, setAmendConfirm] = useState("");
-  const [authed, setAuthed] = useState(false);
-  const [authReady, setAuthReady] = useState(false);
 
+  // ✅ Outcome choice (for OUTCOME kind)
+  const [outcomeResult, setOutcomeResult] = useState<"COMPLETED" | "FAILED">("COMPLETED");
+
+  // ✅ Keep session in sync
   useEffect(() => {
+    let mounted = true;
+
     supabase.auth.getSession().then(({ data }) => {
-      setAuthed(!!data.session);
+      if (!mounted) return;
+      setSession(data.session);
       setAuthReady(true);
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      setAuthed(!!session);
+      if (!mounted) return;
+      setSession(session);
       setAuthReady(true);
     });
 
-    return () => sub.subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
   }, []);
-
-  // ✅ Outcome choice (for OUTCOME kind)
-  const [outcomeResult, setOutcomeResult] = useState<"COMPLETED" | "FAILED">("COMPLETED");
 
   const canLockTyped = useMemo(
     () => confirmText.trim().toUpperCase() === "LOCK",
     [confirmText]
   );
+
 
   const lockCoreOk = useMemo(() => {
     const t = lockCoreTitle.trim();
