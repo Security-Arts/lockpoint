@@ -175,7 +175,7 @@ const canAmend = useMemo(() => {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  async function createTrajectory() {
+ async function createTrajectory() {
   if (busy) return;
   setBusy(true);
   setToast(null);
@@ -183,7 +183,7 @@ const canAmend = useMemo(() => {
   const title = draftTitle.trim();
   const commitment = draftCommitment.trim();
 
-  // ✅ precise messages
+  // validation
   if (title.length < 3) {
     setToast("Title must be at least 3 characters.");
     setBusy(false);
@@ -195,30 +195,29 @@ const canAmend = useMemo(() => {
     return;
   }
 
-  // ✅ require auth before creating a draft
-  const { data: u, error: userErr } = await supabase.auth.getUser();
-  if (userErr) {
-    console.error(userErr);
-    setToast("Auth error: " + userErr.message);
-    setBusy(false);
-    return;
-  }
-
-  const uid = u.user?.id;
+  // ✅ require auth (use session from Home() state)
+  const uid = session?.user?.id;
   if (!uid) {
-    setToast("Please sign in to create a draft.");
+    setToast("Please sign in to create drafts.");
     setBusy(false);
+
+    // ✅ one-click sign in (Google)
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${window.location.origin}/` },
+    });
+
     return;
   }
 
   const { data, error } = await supabase
     .from("trajectories")
     .insert({
+      owner_id: uid,
       title,
       commitment,
       summary: null,
       status: "draft",
-      // owner_id НЕ передаємо — DB ставить default auth.uid()
     })
     .select("id")
     .single();
