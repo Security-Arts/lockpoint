@@ -36,6 +36,8 @@ export default function Home() {
 
   const [items, setItems] = useState<Trajectory[]>([]);
   const [loadingList, setLoadingList] = useState(true);
+  const [session, setSession] = useState<any>(null);
+  const authed = !!session?.user;
 
   // Draft inputs
   const [draftTitle, setDraftTitle] = useState("");
@@ -126,25 +128,26 @@ const canAmend = useMemo(() => {
   }, [draftTitle, draftCommitment]);
 
   async function loadLatest() {
-    setLoadingList(true);
+  setLoadingList(true);
 
-    const { data, error } = await supabase
-      .from("trajectories")
-      .select("id,title,commitment,status,created_at,locked_at,dropped_at")
-      .order("created_at", { ascending: false })
-      .limit(8);
+  const { data, error } = await supabase
+    .from("trajectories")
+    .select("id,title,commitment,status,created_at,locked_at,dropped_at")
+    .in("status", ["locked", "completed", "failed"]) // ← ОЦЕ ГОЛОВНЕ
+    .order("locked_at", { ascending: false, nullsFirst: false })
+    .limit(8);
 
-    if (error) {
-      console.error(error);
-      setToast("Error loading list: " + error.message);
-      setItems([]);
-      setLoadingList(false);
-      return;
-    }
-
-    setItems((data ?? []) as Trajectory[]);
+  if (error) {
+    console.error(error);
+    setToast("Error loading list: " + error.message);
+    setItems([]);
     setLoadingList(false);
+    return;
   }
+
+  setItems((data ?? []) as Trajectory[]);
+  setLoadingList(false);
+}
 
   useEffect(() => {
     loadLatest();
