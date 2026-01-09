@@ -64,6 +64,22 @@ export default function Home() {
   const [amendKind, setAmendKind] = useState<AmendmentKind>("MILESTONE");
   const [amendBody, setAmendBody] = useState("");
   const [amendConfirm, setAmendConfirm] = useState("");
+  const [authed, setAuthed] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setAuthed(!!data.session);
+      setAuthReady(true);
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      setAuthed(!!session);
+      setAuthReady(true);
+    });
+
+    return () => sub.subscription.unsubscribe();
+  }, []);
 
   // ✅ Outcome choice (for OUTCOME kind)
   const [outcomeResult, setOutcomeResult] = useState<"COMPLETED" | "FAILED">("COMPLETED");
