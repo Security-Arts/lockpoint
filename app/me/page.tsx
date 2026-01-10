@@ -51,8 +51,7 @@ export default function MyCabinetPage() {
           ? status === "draft"
           : filter === "locked"
           ? status === "locked"
-          : // final
-            status === "completed" || status === "failed";
+          : status === "completed" || status === "failed";
 
       const matchQuery = !query
         ? true
@@ -100,6 +99,92 @@ export default function MyCabinetPage() {
     return () => sub.subscription.unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function lockTrajectory(id: string) {
+    setToast(null);
+
+    const { data: u } = await supabase.auth.getUser();
+    const uid = u.user?.id;
+    if (!uid) {
+      setToast("Please sign in.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("trajectories")
+      .update({
+        status: "locked",
+        locked_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("owner_id", uid)
+      .eq("status", "draft");
+
+    if (error) {
+      console.error(error);
+      setToast("Lock error: " + error.message);
+      return;
+    }
+
+    setToast("LOCKED · irreversible");
+    await loadMine();
+  }
+
+  async function dropDraft(id: string) {
+    setToast(null);
+
+    const { data: u } = await supabase.auth.getUser();
+    const uid = u.user?.id;
+    if (!uid) {
+      setToast("Please sign in.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("trajectories")
+      .update({
+        dropped_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("owner_id", uid)
+      .eq("status", "draft");
+
+    if (error) {
+      console.error(error);
+      setToast("Drop error: " + error.message);
+      return;
+    }
+
+    setToast("DROPPED");
+    await loadMine();
+  }
+
+  async function finalizeOutcome(id: string, result: "completed" | "failed") {
+    setToast(null);
+
+    const { data: u } = await supabase.auth.getUser();
+    const uid = u.user?.id;
+    if (!uid) {
+      setToast("Please sign in.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("trajectories")
+      .update({ status: result })
+      .eq("id", id)
+      .eq("owner_id", uid)
+      .eq("status", "locked");
+
+    if (error) {
+      console.error(error);
+      setToast("Outcome error: " + error.message);
+      return;
+    }
+
+    setToast(`OUTCOME recorded: ${result.toUpperCase()}`);
+    await loadMine();
+  }
 
   return (
     <AuthGate>
@@ -153,9 +238,7 @@ export default function MyCabinetPage() {
             {loading ? (
               <div className="text-sm text-zinc-600 dark:text-zinc-300">Loading…</div>
             ) : filtered.length === 0 ? (
-              <div className="text-sm text-zinc-600 dark:text-zinc-300">
-                No records found.
-              </div>
+              <div className="text-sm text-zinc-600 dark:text-zinc-300">No records found.</div>
             ) : (
               filtered.map((t) => {
                 const status = (t.status ?? "").toLowerCase();
@@ -221,14 +304,57 @@ export default function MyCabinetPage() {
                         ) : null}
                       </div>
 
-                      {/* link to detail later */}
-                      <Link
-                        href={`/t/${t.id}`}
-                        className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-                        title="Open (detail page next step)"
-                      >
-                        Open
-                      </Link>
+                      <div className="flex flex-col items-end gap-2">
+                        <Link
+                          href={`/t/${t.id}`}
+                          className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                          title="Open detail view"
+                        >
+                          Open
+                        </Link>
+
+                        {!isLocked ? (
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => lockTrajectory(t.id)}
+                              className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-semibold hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                              title="Lock this draft"
+                            >
+                              LOCK
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => dropDraft(t.id)}
+                              className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                              title="Drop draft"
+                            >
+                              DROP
+                            </button>
+                          </div>
+                        ) : !isFinal ? (
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => finalizeOutcome(t.id, "completed")}
+                              className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-semibold hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                              title="Finalize as completed"
+                            >
+                              ✅ Completed
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => finalizeOutcome(t.id, "failed")}
+                              className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-semibold hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                              title="Finalize as failed"
+                            >
+                              ❌ Failed
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
 
                     {isFinal ? (
@@ -241,7 +367,7 @@ export default function MyCabinetPage() {
                       </div>
                     ) : (
                       <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-                        Draft. You can still change it.
+                        Draft. You can lock or drop it.
                       </div>
                     )}
                   </div>
