@@ -1,8 +1,9 @@
 "use client";
-import { AuthGate } from "@/components/AuthGate";
+
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabase";
 import Link from "next/link";
+import { supabase } from "@/lib/supabaseClient";
+
 type Trajectory = {
   id: string;
   title: string;
@@ -11,9 +12,8 @@ type Trajectory = {
   created_at: string;
   locked_at?: string | null;
   dropped_at?: string | null;
+  deadline_at?: string | null;
 };
-
-type AmendmentKind = "MILESTONE" | "OUTCOME" | "DROP" | "NOTE";
 
 function shortId(id: string) {
   if (!id) return "";
@@ -30,50 +30,52 @@ function fmtDate(iso?: string | null) {
   }
 }
 
-export default function Home() {
-  const [busy, setBusy] = useState(false);
+function toISODateString(d: Date) {
+  // yyyy-mm-dd
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+export default function HomePage() {
   const [toast, setToast] = useState<string | null>(null);
 
-  const [items, setItems] = useState<Trajectory[]>([]);
-  const [loadingList, setLoadingList] = useState(true);
-
-  // ✅ Auth state (single source of truth)
+  // Auth
   const [session, setSession] = useState<any>(null);
   const [authReady, setAuthReady] = useState(false);
   const authed = !!session?.user;
 
   // Draft inputs
+  const [busy, setBusy] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftCommitment, setDraftCommitment] = useState("");
+  const [draftDeadline, setDraftDeadline] = useState<string>(""); // yyyy-mm-dd
 
-  // Lock modal state
-  const [lockOpen, setLockOpen] = useState(false);
-  const [lockId, setLockId] = useState<string | null>(null);
-  const [lockCoreTitle, setLockCoreTitle] = useState("");
-  const [lockCoreCommitment, setLockCoreCommitment] = useState("");
+  // Registry
+  const [items, setItems] = useState<Trajectory[]>([]);
+  const [loadingList, setLoadingList] = useState(true);
 
-  // Lock ritual inputs
-  const [reason, setReason] = useState("");
-  const [confirmText, setConfirmText] = useState("");
+  // Feedback form
+  const [fbBusy, setFbBusy] = useState(false);
+  const [fbName, setFbName] = useState("");
+  const [fbEmail, setFbEmail] = useState("");
+  const [fbMessage, setFbMessage] = useState("");
 
-  // Lock loading (so button shows “Locking…” and prevents double submit)
-  const [lockLoading, setLockLoading] = useState(false);
+  const canCreateDraft = useMemo(() => {
+    const t = draftTitle.trim();
+    const c = draftCommitment.trim();
+    return t.length >= 3 && c.length >= 8;
+  }, [draftTitle, draftCommitment]);
 
-  // Beta stake (symbolic)
-  const [stakePreset, setStakePreset] = useState<number | null>(null);
-  const [stakeCustom, setStakeCustom] = useState<string>("");
+  const canSendFeedback = useMemo(() => {
+    const m = fbMessage.trim();
+    const e = fbEmail.trim();
+    // email optional, but if provided should look like email
+    const emailOk = !e || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+    return m.length >= 5 && emailOk;
+  }, [fbMessage, fbEmail]);
 
-  // Amendment modal
-  const [amendOpen, setAmendOpen] = useState(false);
-  const [amendTrajectoryId, setAmendTrajectoryId] = useState<string | null>(null);
-  const [amendKind, setAmendKind] = useState<AmendmentKind>("MILESTONE");
-  const [amendBody, setAmendBody] = useState("");
-  const [amendConfirm, setAmendConfirm] = useState("");
-
-  // ✅ Outcome choice (for OUTCOME kind)
-  const [outcomeResult, setOutcomeResult] = useState<"COMPLETED" | "FAILED">("COMPLETED");
-
-  // ✅ Keep session in sync
   useEffect(() => {
     let mounted = true;
 
@@ -83,9 +85,9 @@ export default function Home() {
       setAuthReady(true);
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
       if (!mounted) return;
-      setSession(session);
+      setSession(s);
       setAuthReady(true);
     });
 
@@ -95,321 +97,152 @@ export default function Home() {
     };
   }, []);
 
-  const canLockTyped = useMemo(
-    () => confirmText.trim().toUpperCase() === "LOCK",
-    [confirmText]
-  );
-
-
-  const lockCoreOk = useMemo(() => {
-    const t = lockCoreTitle.trim();
-    const c = lockCoreCommitment.trim();
-    return t.length >= 3 && c.length >= 8;
-  }, [lockCoreTitle, lockCoreCommitment]);
-
-  const canLock = canLockTyped && lockCoreOk;
-
-  const stakeAmount = useMemo(() => {
-    if (stakePreset != null) return stakePreset;
-    const n = Number(String(stakeCustom).replace(/[^\d.]/g, ""));
-    if (!Number.isFinite(n) || n <= 0) return null;
-    return Math.round(n);
-  }, [stakePreset, stakeCustom]);
-
-  const stakeLabel = useMemo(() => {
-    if (!stakeAmount) return null;
-    return `$${stakeAmount}`;
-  }, [stakeAmount]);
-
-const canAmend = useMemo(() => {
-  const okWord = amendConfirm.trim().toUpperCase() === "AMEND";
-  const len = amendBody.trim().length;
-
-  const minLen = amendKind === "DROP" ? 1 : 5; // ✅ DROP простіше
-  return okWord && len >= minLen;
-}, [amendConfirm, amendBody, amendKind]);
-
-
-  // ✅ Create draft validity
-  const canCreateDraft = useMemo(() => {
-    const t = draftTitle.trim();
-    const c = draftCommitment.trim();
-    return t.length >= 3 && c.length >= 8;
-  }, [draftTitle, draftCommitment]);
-
   async function loadLatest() {
-  setLoadingList(true);
+    setLoadingList(true);
+    setToast(null);
 
-  const { data, error } = await supabase
-    .from("trajectories")
-    .select("id,title,commitment,status,created_at,locked_at,dropped_at")
-    .in("status", ["locked", "completed", "failed"]) // ← ОЦЕ ГОЛОВНЕ
-    .order("locked_at", { ascending: false, nullsFirst: false })
-    .limit(8);
+    const { data, error } = await supabase
+      .from("trajectories")
+      .select("id,title,commitment,status,created_at,locked_at,dropped_at,deadline_at")
+      .in("status", ["locked", "completed", "failed"])
+      .order("locked_at", { ascending: false, nullsFirst: false })
+      .limit(12);
 
-  if (error) {
-    console.error(error);
-    setToast("Error loading list: " + error.message);
-    setItems([]);
+    if (error) {
+      console.error(error);
+      setToast("Error loading registry: " + error.message);
+      setItems([]);
+      setLoadingList(false);
+      return;
+    }
+
+    setItems((data ?? []) as Trajectory[]);
     setLoadingList(false);
-    return;
   }
-
-  setItems((data ?? []) as Trajectory[]);
-  setLoadingList(false);
-}
 
   useEffect(() => {
     loadLatest();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ESC close modals
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setLockOpen(false);
-        setAmendOpen(false);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
- async function createTrajectory() {
-  if (busy) return;
-  setBusy(true);
-  setToast(null);
-
-  const title = draftTitle.trim();
-  const commitment = draftCommitment.trim();
-
-  // validation
-  if (title.length < 3) {
-    setToast("Title must be at least 3 characters.");
-    setBusy(false);
-    return;
-  }
-  if (commitment.length < 8) {
-    setToast("Commitment statement must be at least 8 characters.");
-    setBusy(false);
-    return;
-  }
-
-  // ✅ require auth (use session from Home() state)
-  const uid = session?.user?.id;
-  if (!uid) {
-    setToast("Please sign in to create drafts.");
-    setBusy(false);
-
-    // ✅ one-click sign in (Google)
+  async function signInGoogle() {
+    setToast(null);
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: `${window.location.origin}/me` },
     });
-
-    return;
   }
 
-  const { data, error } = await supabase
-    .from("trajectories")
-    .insert({
-      owner_id: uid,
-      title,
-      commitment,
-      summary: null,
-      status: "draft",
-    })
-    .select("id")
-    .single();
-
-  if (error) {
-    console.error(error);
-    setToast("Create error: " + error.message);
-    setBusy(false);
-    return;
+  async function signOut() {
+    setToast(null);
+    const { error } = await supabase.auth.signOut();
+    if (error) setToast("Sign out error: " + error.message);
   }
 
-setToast(`Draft created: ${shortId(data.id)}`);
-setDraftTitle("");
-setDraftCommitment("");
-setBusy(false);
-
-// ✅ ВАЖЛИВО: draft НЕ показується на Home Registry (бо loadLatest бере лише locked/completed/failed)
-// тому після створення одразу ведемо користувача в кабінет
-window.location.href = "/me";
-}
-
-  function openLockModal(t: Trajectory) {
-    setToast(null); // ✅ prevents "Draft created..." showing inside lock modal footer
-
-    setLockId(t.id);
-    setLockOpen(true);
-    setReason("");
-    setConfirmText("");
-    setStakePreset(null);
-    setStakeCustom("");
-    setLockLoading(false);
-
-    setLockCoreTitle(t.title ?? "");
-    setLockCoreCommitment(t.commitment ?? "");
-  }
-
-  async function lockTrajectory(id: string | null) {
-    if (!id) {
-      setToast("Internal error: missing trajectory id");
-      return;
-    }
-    if (lockLoading) return;
-    setLockLoading(true);
+  async function createTrajectory() {
+    if (busy) return;
+    setBusy(true);
     setToast(null);
 
-    const title = lockCoreTitle.trim();
-    const commitment = lockCoreCommitment.trim();
+    const title = draftTitle.trim();
+    const commitment = draftCommitment.trim();
 
-    if (title.length < 3 || commitment.length < 8) {
-      setToast("Lock requires a title (≥3) and a commitment statement (≥8).");
-      setLockLoading(false);
+    if (title.length < 3) {
+      setToast("Title must be at least 3 characters.");
+      setBusy(false);
       return;
     }
-    if (!canLockTyped) {
-      setToast('Type "LOCK" to proceed.');
-      setLockLoading(false);
+    if (commitment.length < 8) {
+      setToast("Commitment statement must be at least 8 characters.");
+      setBusy(false);
       return;
     }
-
-    // ✅ IMPORTANT: persist stake + reason in DB
-    const payload: Record<string, any> = {
-      title,
-      commitment,
-      status: "locked",
-      locked_at: new Date().toISOString(),
-      stake_amount: stakeAmount ?? null,
-      stake_currency: stakeAmount ? "USD" : null,
-      lock_reason: reason?.trim() ? reason.trim() : null,
-    };
 
     const uid = session?.user?.id;
-if (!uid) {
-  setToast("Please sign in.");
-  setLockLoading(false);
-  return;
-}
-
-const { error } = await supabase
-  .from("trajectories")
-  .update(payload)
-  .eq("id", id)
-  .eq("owner_id", uid)     // ✅ тільки свій
-  .eq("status", "draft");  // ✅ тільки якщо ще draft
-
-    if (error) {
-      console.error("Lock error:", error);
-      setToast("Lock error: " + error.message);
-      setLockLoading(false);
+    if (!uid) {
+      setToast("Please sign in to create drafts.");
+      setBusy(false);
+      await signInGoogle();
       return;
     }
 
-    setToast("LOCKED · irreversible");
-    setLockOpen(false);
-    setLockId(null);
+    const deadline_at =
+      draftDeadline?.trim()
+        ? new Date(`${draftDeadline}T00:00:00`).toISOString()
+        : null;
 
-    setReason("");
-    setConfirmText("");
-    setStakePreset(null);
-    setStakeCustom("");
-
-    await loadLatest();
-    setLockLoading(false);
-  }
-
-  function openAmendModal(t: Trajectory, kind: AmendmentKind = "MILESTONE") {
-    setToast(null);
-    setAmendTrajectoryId(t.id);
-    setAmendKind(kind);
-    setAmendBody("");
-    setAmendConfirm("");
-    if (kind === "OUTCOME") setOutcomeResult("COMPLETED"); // ✅ reset
-    setAmendOpen(true);
-  }
-
-  async function addAmendment() {
-    if (!amendTrajectoryId) return;
-
-    setToast(null);
-
-    const contentRaw = amendBody.trim();
-
-    if (contentRaw.length < 5) {
-      setToast("Amendment text is too short.");
-      return;
-    }
-    if (amendConfirm.trim().toUpperCase() !== "AMEND") {
-      setToast('Type "AMEND" to proceed.');
-      return;
-    }
-
-    // ✅ If OUTCOME — finalize trajectory status permanently
-    if (amendKind === "OUTCOME") {
-      const finalStatus = outcomeResult === "COMPLETED" ? "completed" : "failed";
-
-    const uid = session?.user?.id;
-if (!uid) {
-  setToast("Please sign in.");
-  return;
-}
-
-const { error: outErr } = await supabase
-  .from("trajectories")
-  .update({ status: finalStatus })
-  .eq("id", amendTrajectoryId)
-  .eq("owner_id", uid)       // ✅ тільки свій
-  .eq("status", "locked");   // ✅ outcome тільки після lock
-
-      if (outErr) {
-        console.error(outErr);
-        setToast("Outcome error: " + outErr.message);
-        return;
-      }
-    }
-
-    // store amendment log (for OUTCOME we prefix result)
-    const content =
-      amendKind === "OUTCOME"
-        ? `[${outcomeResult}] ${contentRaw}`
-        : contentRaw;
-
-    const { error } = await supabase.from("trajectory_amendments").insert({
-      trajectory_id: amendTrajectoryId,
-      kind: amendKind,
-      content,
-    });
+    const { data, error } = await supabase
+      .from("trajectories")
+      .insert({
+        owner_id: uid,
+        title,
+        commitment,
+        status: "draft",
+        summary: null,
+        deadline_at,
+      })
+      .select("id")
+      .single();
 
     if (error) {
       console.error(error);
-      setToast("Amendment error: " + error.message);
+      setToast("Create error: " + error.message);
+      setBusy(false);
       return;
     }
 
-    // if DROP — mark trajectory dropped_at
-    if (amendKind === "DROP") {
-const uid2 = session?.user?.id;
-const { error: dropErr } = await supabase
-  .from("trajectories")
-  .update({ dropped_at: new Date().toISOString() })
-  .eq("id", amendTrajectoryId)
-  .eq("owner_id", uid2 ?? "")
-  .eq("status", "draft"); // ✅ drop тільки draft
+    setDraftTitle("");
+    setDraftCommitment("");
+    setDraftDeadline("");
+    setBusy(false);
 
-      if (dropErr) console.warn("dropped_at update warn:", dropErr.message);
+    // Draft created on Home → manage actions in cabinet
+    window.location.href = "/me";
+  }
+
+  async function sendFeedback() {
+    if (fbBusy) return;
+    setFbBusy(true);
+    setToast(null);
+
+    const payload = {
+      name: fbName.trim() || null,
+      email: fbEmail.trim() || null,
+      message: fbMessage.trim(),
+      page: "home",
+      created_at: new Date().toISOString(),
+    };
+
+    if (!payload.message || payload.message.length < 5) {
+      setToast("Feedback message is too short.");
+      setFbBusy(false);
+      return;
     }
 
-    setToast(`${amendKind} recorded`);
-    setAmendOpen(false);
-    setAmendTrajectoryId(null);
-    setAmendBody("");
-    setAmendConfirm("");
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    await loadLatest();
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || `HTTP ${res.status}`);
+      }
+
+      setFbName("");
+      setFbEmail("");
+      setFbMessage("");
+      setToast("Feedback sent. Thank you.");
+    } catch (e: any) {
+      console.error(e);
+      setToast(
+        "Feedback error. If /api/feedback is not set up yet, create it (I can generate it next)."
+      );
+    } finally {
+      setFbBusy(false);
+    }
   }
 
   const SYSTEM_FORMULA = (
@@ -429,29 +262,58 @@ const { error: dropErr } = await supabase
     "Move to a different country and rebuild from zero",
   ];
 
+  const minDeadline = useMemo(() => {
+    const today = new Date();
+    return toISODateString(today);
+  }, []);
+
   return (
-        <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
-      <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col justify-center px-6 py-24">
-        <h1 className="text-4xl font-semibold leading-tight tracking-tight">Lockpoint</h1>
+    <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
+      <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col justify-center px-6 py-16">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-4xl font-semibold leading-tight tracking-tight">Lockpoint</h1>
+            <p className="mt-3 text-lg leading-8 text-zinc-700 dark:text-zinc-200">
+              <strong>Where decisions become irreversible futures.</strong>
+            </p>
+          </div>
 
-        <p className="mt-3 text-lg leading-8 text-zinc-700 dark:text-zinc-200">
-          <strong>Where decisions become irreversible futures.</strong>
-        </p>
-<div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-  <Link
-    href="/me"
-    className="inline-flex h-10 items-center justify-center rounded-full border border-zinc-200 bg-white px-5 text-sm font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-  >
-    My cabinet →
-  </Link>
+          <div className="flex flex-col items-end gap-2">
+            <Link
+              href="/me"
+              className="inline-flex h-10 items-center justify-center rounded-full border border-zinc-200 bg-white px-5 text-sm font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+            >
+              My cabinet →
+            </Link>
 
-  <span className="text-xs text-zinc-500 dark:text-zinc-400">
-    Your drafts and locked records
-  </span>
-</div>
+            {authReady ? (
+              authed ? (
+                <button
+                  type="button"
+                  onClick={signOut}
+                  className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-4 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                >
+                  Sign out
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={signInGoogle}
+                  className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-4 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                >
+                  Sign in (Google)
+                </button>
+              )
+            ) : (
+              <div className="text-xs text-zinc-500 dark:text-zinc-400">…</div>
+            )}
+          </div>
+        </div>
+
         <p className="mt-6 text-base leading-7 text-zinc-700 dark:text-zinc-200">
-          Create a draft trajectory. When you reach the lockpoint, you lock it. After lock:{" "}
-          <strong>no edits</strong>, <strong>no deletes</strong> — <strong>amendments only</strong>.
+          Create a draft trajectory. When you’re ready, go to your cabinet to lock it.
+          After lock: <strong>no edits</strong>, <strong>no deletes</strong> — <strong>amendments only</strong>.
         </p>
 
         {/* Rule block */}
@@ -459,7 +321,9 @@ const { error: dropErr } = await supabase
           <div className="flex gap-4">
             <div className="w-1 rounded-full bg-zinc-900 dark:bg-white" />
             <div>
-              <div className="text-xl font-semibold leading-snug tracking-tight">{SYSTEM_FORMULA}</div>
+              <div className="text-xl font-semibold leading-snug tracking-tight">
+                {SYSTEM_FORMULA}
+              </div>
               <div className="mt-2 text-xs text-zinc-600 dark:text-zinc-300">
                 <span className="font-semibold">Lockpoint is not a planner, tracker, or coach.</span>{" "}
                 It records a commitment, locks it in time, and later records the outcome — unchanged, forever.
@@ -484,11 +348,11 @@ const { error: dropErr } = await supabase
           </div>
         </div>
 
-        {/* Draft inputs */}
+        {/* Create draft */}
         <div className="mt-10 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
           <div className="text-sm font-semibold">Create draft</div>
           <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-            A draft can be edited. A lock cannot.
+            Drafts are editable. Locking happens in your cabinet.
           </div>
 
           <div className="mt-4">
@@ -514,6 +378,22 @@ const { error: dropErr } = await supabase
             />
           </div>
 
+          <div className="mt-4">
+            <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
+              Deadline (optional)
+            </label>
+            <input
+              type="date"
+              min={minDeadline}
+              value={draftDeadline}
+              onChange={(e) => setDraftDeadline(e.target.value)}
+              className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+            />
+            <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+              If set, it appears in your cabinet and in the public record after lock.
+            </div>
+          </div>
+
           <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
             Minimum: title ≥ 3 chars, statement ≥ 8 chars.
           </div>
@@ -525,44 +405,49 @@ const { error: dropErr } = await supabase
               onClick={createTrajectory}
               className="h-12 rounded-full bg-zinc-900 px-6 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
             >
-              {busy ? "Creating…" : "Create draft"}
+              {busy ? "Creating…" : "Create draft → go to cabinet"}
             </button>
 
-            {toast && (
-              <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
-                {toast}
-              </div>
-            )}
+            <div className="text-xs text-zinc-500 dark:text-zinc-400">
+              After creating, you’ll manage (LOCK/Outcome) in <span className="font-semibold">My cabinet</span>.
+            </div>
           </div>
         </div>
 
         {/* Registry */}
         <div className="mt-10 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
-          <div className="text-sm font-semibold">Registry</div>
-          <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-            Drafts are editable. Locked records are permanent.
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold">Public registry</div>
+              <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+                Locked records and outcomes. Immutable.
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={loadLatest}
+              className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-4 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+              title="Refresh"
+            >
+              Refresh
+            </button>
           </div>
 
           <div className="mt-4 space-y-2">
             {loadingList ? (
               <div className="text-sm text-zinc-600 dark:text-zinc-300">Loading…</div>
             ) : items.length === 0 ? (
-              <div className="text-sm text-zinc-600 dark:text-zinc-300">No trajectories yet.</div>
+              <div className="text-sm text-zinc-600 dark:text-zinc-300">No locked records yet.</div>
             ) : (
               items.map((t) => {
                 const status = String(t.status || "").toLowerCase();
-                const isLocked = status === "locked" || !!t.locked_at;
                 const isFinal = status === "completed" || status === "failed";
 
                 return (
                   <div
                     key={t.id}
-                    className={[
-                      "rounded-xl border px-3 py-2",
-                      isLocked
-                        ? "border-zinc-300 bg-zinc-50 dark:border-white/15 dark:bg-white/5"
-                        : "border-zinc-200 bg-white dark:border-white/10 dark:bg-black/20",
-                    ].join(" ")}
+                    className="rounded-xl border border-zinc-200 bg-white px-3 py-3 dark:border-white/10 dark:bg-black/20"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -572,13 +457,21 @@ const { error: dropErr } = await supabase
                           <span className="font-mono">{shortId(t.id)}</span>
                           {" · "}
                           <span className="uppercase tracking-wide">
-                            {t.status ? String(t.status).toUpperCase() : isLocked ? "LOCKED" : "DRAFT"}
+                            {status ? status.toUpperCase() : "—"}
                           </span>
                           {" · "}
                           <span className="text-zinc-500 dark:text-zinc-400">
                             created {fmtDate(t.created_at)}
                           </span>
-                          {isLocked && t.locked_at ? (
+                          {t.deadline_at ? (
+                            <>
+                              {" · "}
+                              <span className="text-zinc-500 dark:text-zinc-400">
+                                deadline {fmtDate(t.deadline_at)}
+                              </span>
+                            </>
+                          ) : null}
+                          {t.locked_at ? (
                             <>
                               {" · "}
                               <span className="text-zinc-500 dark:text-zinc-400">
@@ -586,92 +479,39 @@ const { error: dropErr } = await supabase
                               </span>
                             </>
                           ) : null}
-                          {t.dropped_at ? (
-                            <>
-                              {" · "}
-                              <span className="text-zinc-600 dark:text-zinc-300">
-                                DROPPED {fmtDate(t.dropped_at)}
-                              </span>
-                            </>
-                          ) : null}
                         </div>
 
                         {t.commitment ? (
                           <div className="mt-2 text-xs text-zinc-600 dark:text-zinc-300">
-                            <span className="font-medium text-zinc-700 dark:text-zinc-200">commitment:</span>{" "}
+                            <span className="font-medium text-zinc-700 dark:text-zinc-200">
+                              commitment:
+                            </span>{" "}
                             {t.commitment}
                           </div>
                         ) : null}
                       </div>
 
                       <div className="flex flex-col items-end gap-2">
-                        {!isLocked ? (
-                          <>
-                            <button
-                              type="button"
-                              className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-                              onClick={() => openLockModal(t)}
-                            >
-                              LOCK THIS
-                            </button>
+                        <Link
+                          href={`/t/${t.id}`}
+                          className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                          title="Open public immutable view"
+                        >
+                          Open
+                        </Link>
 
-                            <button
-                              type="button"
-                              className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-                              onClick={() => openAmendModal(t, "DROP")}
-                            >
-                              DROP
-                            </button>
-
-                            <div className="text-[11px] text-zinc-500 dark:text-zinc-400 text-right">
-                              Drop discards a draft only.
-                            </div>
-                          </>
+                        {!isFinal ? (
+                          <Link
+                            href="/me"
+                            className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-semibold hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                            title="Manage in cabinet"
+                          >
+                            Manage
+                          </Link>
                         ) : (
-                          <>
-                            <span className="rounded-full border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
-                              {isFinal ? "Final" : "Irreversible"}
-                            </span>
-
-                            {!isFinal ? (
-                              <>
-                                <div className="text-[11px] text-zinc-600 dark:text-zinc-300 text-right">
-                                  <div className="font-semibold">Choose your next action</div>
-                                  <div className="opacity-80">
-                                    Amend clarifies the record. Outcome finalizes it forever.
-                                  </div>
-                                </div>
-
-                                <div className="flex gap-2">
-                                  <button
-                                    type="button"
-                                    className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-                                    onClick={() => openAmendModal(t, "MILESTONE")}
-                                    title="Clarify or add a factual milestone"
-                                  >
-                                    AMEND
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium transition hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-                                    onClick={() => openAmendModal(t, "OUTCOME")}
-                                    title="Record the final outcome (finalizes forever)"
-                                  >
-                                    OUTCOME
-                                  </button>
-                                </div>
-
-                                <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400 text-right">
-                                  Once an outcome is recorded, this lock becomes final and cannot be changed.
-                                </div>
-                              </>
-                            ) : (
-                              <div className="text-[11px] text-zinc-500 dark:text-zinc-400 text-right">
-                                This record is finalized.
-                              </div>
-                            )}
-                          </>
+                          <span className="rounded-full border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
+                            Final
+                          </span>
                         )}
                       </div>
                     </div>
@@ -682,356 +522,68 @@ const { error: dropErr } = await supabase
           </div>
         </div>
 
-        {/* Lock modal */}
-        {lockOpen && lockId && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
-            onMouseDown={() => !lockLoading && setLockOpen(false)}
-          >
-            <div
-              className="w-full max-w-lg max-h-[90vh] rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-white/10 dark:bg-black flex flex-col"
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              {/* SCROLL BODY */}
-              <div className="flex-1 overflow-y-auto p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-lg font-semibold">You are at the lockpoint.</div>
-                    <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
-                      Once locked:
-                      <ul className="mt-2 list-disc space-y-1 pl-5">
-                        <li>No edits</li>
-                        <li>No deletions</li>
-                        <li>Only amendments will be recorded</li>
-                        <li>The original commitment remains forever</li>
-                      </ul>
-                      <div className="mt-3 text-sm">{SYSTEM_FORMULA}</div>
-                    </div>
-                  </div>
+        {/* Feedback */}
+        <div className="mt-10 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+          <div className="text-sm font-semibold">Feedback</div>
+          <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+            Tell me what feels broken, confusing, or missing. Short and direct is best.
+          </div>
 
-                  <button
-                    type="button"
-                    disabled={lockLoading}
-                    className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200 dark:hover:bg-white/10"
-                    onClick={() => setLockOpen(false)}
-                    aria-label="Close"
-                    title="Close"
-                  >
-                    ✕
-                  </button>
-                </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">Name (optional)</label>
+              <input
+                value={fbName}
+                onChange={(e) => setFbName(e.target.value)}
+                className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+                placeholder="Andriy"
+              />
+            </div>
 
-                {/* core */}
-                <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
-                  <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">
-                    Commitment core (required)
-                  </div>
-                  <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-                    A locked record must have a title and a commitment statement.
-                  </div>
-
-                  <div className="mt-3">
-                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">Title</label>
-                    <input
-                      value={lockCoreTitle}
-                      onChange={(e) => setLockCoreTitle(e.target.value)}
-                      className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                      placeholder="Title"
-                    />
-                  </div>
-
-                  <div className="mt-3">
-                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                      Commitment statement
-                    </label>
-                    <textarea
-                      value={lockCoreCommitment}
-                      onChange={(e) => setLockCoreCommitment(e.target.value)}
-                      className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                      rows={3}
-                      placeholder='One sentence. Example: "I will … by …"'
-                    />
-                  </div>
-
-                  {!lockCoreOk ? (
-                    <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-                      Minimum: title ≥ 3 chars, statement ≥ 8 chars.
-                    </div>
-                  ) : (
-                    <div className="mt-2 text-[11px] text-zinc-600 dark:text-zinc-300">
-                      Core is valid.
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-4">
-                  <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                    Lock reason (optional)
-                  </label>
-                  <textarea
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                    rows={3}
-                    placeholder="Why is this the point of no return?"
-                  />
-                </div>
-
-                {/* stake */}
-                <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
-                  <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">
-                    Optional stake (beta)
-                  </div>
-                  <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-                    This does not buy success. It increases the weight of the decision.
-                    <span className="ml-2 text-zinc-500 dark:text-zinc-400">
-                      During beta, stakes are symbolic and not charged.
-                    </span>
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {[10, 25, 50].map((amt) => {
-                      const active = stakePreset === amt;
-                      return (
-                        <button
-                          key={amt}
-                          type="button"
-                          onClick={() => {
-                            setStakePreset(active ? null : amt);
-                            setStakeCustom("");
-                          }}
-                          className={[
-                            "h-9 rounded-full border px-4 text-xs font-medium transition",
-                            active
-                              ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-black"
-                              : "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50 dark:border-white/10 dark:bg-black/20 dark:text-zinc-200 dark:hover:bg-white/10",
-                          ].join(" ")}
-                        >
-                          ${amt}
-                        </button>
-                      );
-                    })}
-
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-zinc-500 dark:text-zinc-400">Custom:</span>
-                      <input
-                        value={stakeCustom}
-                        onChange={(e) => {
-                          setStakeCustom(e.target.value);
-                          setStakePreset(null);
-                        }}
-                        className="h-9 w-28 rounded-full border border-zinc-200 bg-white px-3 text-xs outline-none dark:border-white/10 dark:bg-black/20"
-                        placeholder="$"
-                        inputMode="numeric"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-                    {stakeLabel ? (
-                      <>
-                        Selected stake: <span className="font-mono">{stakeLabel}</span>
-                      </>
-                    ) : (
-                      "No stake attached."
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
-                  Closing this window changes nothing. Locking does.
-                </div>
-              </div>
-
-              {/* FOOTER */}
-              <div className="border-t border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-black">
-                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                  Type <span className="font-mono">LOCK</span> to proceed
-                </label>
-
-                <input
-                  value={confirmText}
-                  onChange={(e) => setConfirmText(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm font-mono outline-none dark:border-white/10 dark:bg-white/5"
-                  placeholder="LOCK"
-                />
-
-                <button
-                  type="button"
-                  disabled={!canLock || lockLoading}
-                  className={[
-                    "mt-3 h-11 w-full rounded-full text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
-                    canLock && !lockLoading
-                      ? "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-                      : "bg-zinc-300 text-zinc-700 dark:bg-white/10 dark:text-zinc-300",
-                  ].join(" ")}
-                  onClick={() => lockTrajectory(lockId)}
-                >
-                  {lockLoading ? "Locking…" : "LOCK — irreversible"}
-                </button>
-
-                {toast && (
-                  <div className="mt-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
-                    {toast}
-                  </div>
-                )}
-
-                <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-                  Current time will be recorded.
-                </div>
-              </div>
+            <div>
+              <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">Email (optional)</label>
+              <input
+                value={fbEmail}
+                onChange={(e) => setFbEmail(e.target.value)}
+                className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+                placeholder="you@company.com"
+              />
             </div>
           </div>
-        )}
 
-        {/* Amendment modal */}
-        {amendOpen && amendTrajectoryId && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
-            onMouseDown={() => setAmendOpen(false)}
-          >
-            <div
-              className="w-full max-w-lg max-h-[90vh] rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-white/10 dark:bg-black flex flex-col"
-              onMouseDown={(e) => e.stopPropagation()}
+          <div className="mt-3">
+            <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">Message</label>
+            <textarea
+              value={fbMessage}
+              onChange={(e) => setFbMessage(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+              rows={4}
+              placeholder="What should be different?"
+            />
+          </div>
+
+          <div className="mt-4">
+            <button
+              type="button"
+              disabled={fbBusy || !canSendFeedback}
+              onClick={sendFeedback}
+              className="h-11 w-full rounded-full bg-zinc-900 px-6 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
             >
-              <div className="p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-lg font-semibold">Add amendment</div>
-                    <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                      Amendments are immutable. They extend the record.
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200 dark:hover:bg-white/10"
-                    onClick={() => setAmendOpen(false)}
-                    aria-label="Close"
-                    title="Close"
-                  >
-                    ✕
-                  </button>
-                </div>
+              {fbBusy ? "Sending…" : "Send feedback"}
+            </button>
 
-                <div className="mt-4">
-                  <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">Type</label>
-                  <select
-                    value={amendKind}
-                    onChange={(e) => {
-                      const k = e.target.value as AmendmentKind;
-                      setAmendKind(k);
-                      if (k === "OUTCOME") setOutcomeResult("COMPLETED");
-                    }}
-                    className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                  >
-                    <option value="MILESTONE">AMEND — clarification / milestone</option>
-                    <option value="OUTCOME">OUTCOME — final result</option>
-                    <option value="NOTE">NOTE — short note</option>
-                    <option value="DROP">DROP — discard draft</option>
-                  </select>
-                </div>
-
-                {/* ✅ Outcome selector */}
-                {amendKind === "OUTCOME" && (
-                  <div className="mt-4">
-                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                      Outcome
-                    </label>
-
-                    <div className="mt-2 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setOutcomeResult("COMPLETED")}
-                        className={[
-                          "h-9 rounded-full border px-4 text-xs font-medium transition",
-                          outcomeResult === "COMPLETED"
-                            ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-black"
-                            : "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50 dark:border-white/10 dark:bg-black/20 dark:text-zinc-200 dark:hover:bg-white/10",
-                        ].join(" ")}
-                      >
-                        ✅ Completed
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setOutcomeResult("FAILED")}
-                        className={[
-                          "h-9 rounded-full border px-4 text-xs font-medium transition",
-                          outcomeResult === "FAILED"
-                            ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-black"
-                            : "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50 dark:border-white/10 dark:bg-black/20 dark:text-zinc-200 dark:hover:bg-white/10",
-                        ].join(" ")}
-                      >
-                        ❌ Failed
-                      </button>
-                    </div>
-
-                    <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-                      This will permanently finalize the record.
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-4">
-                  <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">Text</label>
-                  <textarea
-                    value={amendBody}
-                    onChange={(e) => setAmendBody(e.target.value)}
-                    className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                    rows={4}
-                    placeholder={
-                      amendKind === "OUTCOME"
-                        ? "Outcome note (facts): what happened. One sentence."
-                        : amendKind === "DROP"
-                        ? "Why are you dropping this draft? (facts)"
-                        : "What happened? (facts)"
-                    }
-                  />
-                </div>
-
-                <div className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
-                  Type <span className="font-mono">AMEND</span> to record this.
-                </div>
-
-                <div className="mt-2">
-                  <input
-                    value={amendConfirm}
-                    onChange={(e) => setAmendConfirm(e.target.value)}
-                    className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm font-mono outline-none dark:border-white/10 dark:bg-white/5"
-                    placeholder="AMEND"
-                  />
-                </div>
-
-                <div className="mt-5">
-                  <button
-                    type="button"
-                    disabled={!canAmend}
-                    className={[
-                      "h-11 w-full rounded-full text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
-                      canAmend
-                        ? "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-                        : "bg-zinc-300 text-zinc-700 dark:bg-white/10 dark:text-zinc-300",
-                    ].join(" ")}
-                    onClick={addAmendment}
-                  >
-                    RECORD AMENDMENT
-                  </button>
-                </div>
-
-                {toast && (
-                  <div className="mt-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
-                    {toast}
-                  </div>
-                )}
-
-                <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-                  Current time will be recorded.
-                </div>
-              </div>
+            <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+              If feedback endpoint is not set up yet, I’ll generate <span className="font-mono">/api/feedback</span> next.
             </div>
+          </div>
+        </div>
+
+        {toast && (
+          <div className="mt-8 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
+            {toast}
           </div>
         )}
       </main>
     </div>
-        );
+  );
 }
