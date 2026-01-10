@@ -204,7 +204,7 @@ const canAmend = useMemo(() => {
     // ✅ one-click sign in (Google)
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/` },
+      options: { redirectTo: `${window.location.origin}/me` },
     });
 
     return;
@@ -229,11 +229,14 @@ const canAmend = useMemo(() => {
     return;
   }
 
-  setToast(`Draft created: ${shortId(data.id)}`);
-  setDraftTitle("");
-  setDraftCommitment("");
-  await loadLatest();
-  setBusy(false);
+setToast(`Draft created: ${shortId(data.id)}`);
+setDraftTitle("");
+setDraftCommitment("");
+setBusy(false);
+
+// ✅ ВАЖЛИВО: draft НЕ показується на Home Registry (бо loadLatest бере лише locked/completed/failed)
+// тому після створення одразу ведемо користувача в кабінет
+window.location.href = "/me";
 }
 
   function openLockModal(t: Trajectory) {
@@ -285,7 +288,19 @@ const canAmend = useMemo(() => {
       lock_reason: reason?.trim() ? reason.trim() : null,
     };
 
-    const { error } = await supabase.from("trajectories").update(payload).eq("id", id);
+    const uid = session?.user?.id;
+if (!uid) {
+  setToast("Please sign in.");
+  setLockLoading(false);
+  return;
+}
+
+const { error } = await supabase
+  .from("trajectories")
+  .update(payload)
+  .eq("id", id)
+  .eq("owner_id", uid)     // ✅ тільки свій
+  .eq("status", "draft");  // ✅ тільки якщо ще draft
 
     if (error) {
       console.error("Lock error:", error);
@@ -337,12 +352,18 @@ const canAmend = useMemo(() => {
     if (amendKind === "OUTCOME") {
       const finalStatus = outcomeResult === "COMPLETED" ? "completed" : "failed";
 
-      const { error: outErr } = await supabase
-        .from("trajectories")
-        .update({
-          status: finalStatus,
-        })
-        .eq("id", amendTrajectoryId);
+    const uid = session?.user?.id;
+if (!uid) {
+  setToast("Please sign in.");
+  return;
+}
+
+const { error: outErr } = await supabase
+  .from("trajectories")
+  .update({ status: finalStatus })
+  .eq("id", amendTrajectoryId)
+  .eq("owner_id", uid)       // ✅ тільки свій
+  .eq("status", "locked");   // ✅ outcome тільки після lock
 
       if (outErr) {
         console.error(outErr);
@@ -371,10 +392,13 @@ const canAmend = useMemo(() => {
 
     // if DROP — mark trajectory dropped_at
     if (amendKind === "DROP") {
-      const { error: dropErr } = await supabase
-        .from("trajectories")
-        .update({ dropped_at: new Date().toISOString() })
-        .eq("id", amendTrajectoryId);
+const uid2 = session?.user?.id;
+const { error: dropErr } = await supabase
+  .from("trajectories")
+  .update({ dropped_at: new Date().toISOString() })
+  .eq("id", amendTrajectoryId)
+  .eq("owner_id", uid2 ?? "")
+  .eq("status", "draft"); // ✅ drop тільки draft
 
       if (dropErr) console.warn("dropped_at update warn:", dropErr.message);
     }
