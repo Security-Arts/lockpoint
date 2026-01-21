@@ -329,3 +329,5 @@ export default function Home() {
     </div>
   ) : null}
 </div>
+);
+}
