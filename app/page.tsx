@@ -283,7 +283,7 @@ export default function Home() {
           </div>
 
           <div className="mt-4">
-            <label className="text-xs font-medium">Email (optional)</label>
+            <label className="text-xs font-medium">Email</label>
             <input
               value={fbEmail}
               onChange={(e) => setFbEmail(e.target.value)}
