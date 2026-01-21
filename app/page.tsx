@@ -157,6 +157,12 @@ export default function Home() {
         <p className="mt-3 text-lg text-zinc-700 dark:text-zinc-200">
           <strong>Where decisions become irreversible futures.</strong>
         </p>
+<Link
+  href="/onboarding"
+  className="mt-3 inline-block text-sm text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+>
+  What is Lockpoint?
+</Link>
 
         <div className="mt-6 flex items-center gap-3">
           <Link
