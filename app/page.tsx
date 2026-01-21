@@ -275,59 +275,61 @@ export default function Home() {
             )}
           </div>
         </div>
+        {/* Feedback */}
+        <div className="mt-10 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+          <div className="text-sm font-semibold">Feedback</div>
+          <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+            Tell me what broke or what you want next.
+          </div>
 
-      {/* Feedback */}
-<div className="mt-10 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
-  <div className="text-sm font-semibold">Feedback</div>
-  <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-    Tell me what broke or what you want next.
-  </div>
+          <div className="mt-4">
+            <label className="text-xs font-medium">Email (optional)</label>
+            <input
+              value={fbEmail}
+              onChange={(e) => setFbEmail(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+              placeholder="you@email.com"
+            />
+          </div>
 
-  <div className="mt-4">
-    <label className="text-xs font-medium">Email (optional)</label>
-    <input
-      value={fbEmail}
-      onChange={(e) => setFbEmail(e.target.value)}
-      className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-      placeholder="you@email.com"
-    />
-  </div>
+          <div className="mt-4">
+            <label className="text-xs font-medium">Message</label>
+            <textarea
+              value={fbMsg}
+              onChange={(e) => setFbMsg(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+              rows={3}
+              placeholder="Feedback, ideas, collaboration - anything you want to share."
+            />
+          </div>
 
-  <div className="mt-4">
-    <label className="text-xs font-medium">Message</label>
-    <textarea
-      value={fbMsg}
-      onChange={(e) => setFbMsg(e.target.value)}
-      className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-      rows={3}
-      placeholder="One sentence is enough."
-    />
-  </div>
+          <button
+            type="button"
+            onClick={() => {
+              const subject = encodeURIComponent("Lockpoint feedback");
+              const body = encodeURIComponent(
+                `From: ${fbEmail || "(not provided)"}\n\nMessage:\n${fbMsg || ""}`
+              );
+              window.location.href =
+                "mailto:a.lutsyna@gmail.com?subject=" +
+                subject +
+                "&body=" +
+                body;
+              setFbSent(true);
+            }}
+            className="mt-4 h-11 rounded-full border border-zinc-200 bg-white px-5 text-sm font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+          >
+            Send
+          </button>
 
-  <button
-    type="button"
-    onClick={() => {
-      const subject = encodeURIComponent("Lockpoint feedback");
-      const body = encodeURIComponent(
-        `From: ${fbEmail || "(not provided)"}\n\nMessage:\n${fbMsg || ""}`
-      );
-      window.location.href =
-        "mailto:a.lutsyna@gmail.com?subject=" +
-        subject +
-        "&body=" +
-        body;
-      setFbSent(true);
-    }}
-    className="mt-4 h-11 rounded-full border border-zinc-200 bg-white px-5 text-sm font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-  >
-    Send
-  </button>
+          {fbSent ? (
+            <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+              Sent. Thank you.
+            </div>
+          ) : null}
+        </div>
 
-  {fbSent ? (
-    <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-      Sent. Thank you.
+      </main>
     </div>
-  ) : null}
-</div>
-);
+  );
 }
