@@ -47,7 +47,6 @@ export default function TrajectoryPage() {
   const id = params?.id;
 
   const [me, setMe] = useState<string | null>(null);
-
   const [t, setT] = useState<Trajectory | null>(null);
   const [amends, setAmends] = useState<Amendment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,7 +69,7 @@ export default function TrajectoryPage() {
       await navigator.clipboard.writeText(shareUrl);
       setToast("Link copied.");
     } catch {
-      setToast("Could not copy link (clipboard blocked).");
+      setToast("Could not copy link.");
     }
   }
 
@@ -79,76 +78,65 @@ export default function TrajectoryPage() {
     setLoading(true);
     setToast(null);
 
-    const { data: u } = await supabase.auth.getUser();
-    const uid = u.user?.id ?? null;
-    setMe(uid);
+    try {
+      const { data: u } = await supabase.auth.getUser();
+      const uid = u.user?.id ?? null;
+      setMe(uid);
 
-    // 1) load trajectory
-    const { data: traj, error: tErr } = await supabase
-      .from("trajectories")
-      .select(
-        "id,owner_id,title,commitment,status,created_at,locked_at,dropped_at,deadline_at,lock_reason,stake_amount,stake_currency"
-      )
-      .eq("id", id)
-      .single();
+      const { data: traj, error: tErr } = await supabase
+        .from("trajectories")
+        .select(
+          "id,owner_id,title,commitment,status,created_at,locked_at,dropped_at,deadline_at,lock_reason,stake_amount,stake_currency"
+        )
+        .eq("id", id)
+        .single();
 
-    if (tErr) {
-      setToast("Load error: " + tErr.message);
+      if (tErr) throw tErr;
+
+      const status = (traj?.status ?? "").toLowerCase();
+      const publicOk = isPublicStatus(traj?.status);
+      const ownerOk = uid && traj?.owner_id && traj.owner_id === uid;
+
+      if (status === "draft" && !ownerOk) {
+        setT(null);
+        setAmends([]);
+        setToast("Private draft. Sign in as the owner to view.");
+        return;
+      }
+
+      if (traj?.dropped_at && !ownerOk) {
+        setT(null);
+        setAmends([]);
+        setToast("Private record.");
+        return;
+      }
+
+      if (!publicOk && !ownerOk) {
+        setT(null);
+        setAmends([]);
+        setToast("Forbidden.");
+        return;
+      }
+
+      setT(traj as Trajectory);
+
+      const { data: a, error: aErr } = await supabase
+        .from("trajectory_amendments")
+        .select("id,trajectory_id,kind,content,created_at")
+        .eq("trajectory_id", id)
+        .order("created_at", { ascending: false });
+
+      if (aErr) throw aErr;
+
+      setAmends((a ?? []) as Amendment[]);
+    } catch (e: any) {
+      console.error(e);
       setT(null);
       setAmends([]);
+      setToast(e?.message ?? "Load failed");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const status = (traj?.status ?? "").toLowerCase();
-    const publicOk = status === "locked" || status === "completed" || status === "failed";
-    const ownerOk = uid && traj?.owner_id && traj.owner_id === uid;
-
-    // If draft: owner-only
-    if (status === "draft" && !ownerOk) {
-      setToast("Private draft. Sign in as the owner to view.");
-      setT(null);
-      setAmends([]);
-      setLoading(false);
-      return;
-    }
-
-    // If dropped: owner-only (optional)
-    if (traj?.dropped_at && !ownerOk) {
-      setToast("Private record.");
-      setT(null);
-      setAmends([]);
-      setLoading(false);
-      return;
-    }
-
-    // If not public and not owner — block
-    if (!publicOk && !ownerOk) {
-      setToast("Forbidden.");
-      setT(null);
-      setAmends([]);
-      setLoading(false);
-      return;
-    }
-
-    setT(traj as Trajectory);
-
-    // 2) load amendments (public for public records; owner-only for drafts)
-    const { data: a, error: aErr } = await supabase
-      .from("trajectory_amendments")
-      .select("id,trajectory_id,kind,content,created_at")
-      .eq("trajectory_id", id)
-      .order("created_at", { ascending: false });
-
-    if (aErr) {
-      setToast("Amendments error: " + aErr.message);
-      setAmends([]);
-      setLoading(false);
-      return;
-    }
-
-    setAmends((a ?? []) as Amendment[]);
-    setLoading(false);
   }
 
   useEffect(() => {
@@ -191,7 +179,6 @@ export default function TrajectoryPage() {
           </div>
         ) : (
           <>
-            {/* record card */}
             <div className="mt-8 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
@@ -213,7 +200,6 @@ export default function TrajectoryPage() {
                     created {fmtDate(t.created_at)}
                     {t.deadline_at ? <> · deadline {fmtDate(t.deadline_at)}</> : null}
                     {t.locked_at ? <> · locked {fmtDate(t.locked_at)}</> : null}
-                    {t.dropped_at ? <> · dropped {fmtDate(t.dropped_at)}</> : null}
                   </div>
 
                   {t.lock_reason ? (
@@ -225,13 +211,11 @@ export default function TrajectoryPage() {
                   {t.stake_amount ? (
                     <div className="mt-2 text-xs text-zinc-600 dark:text-zinc-300">
                       <span className="font-semibold">Stake:</span> {t.stake_currency ?? "USD"}{" "}
-                      {t.stake_amount}
-                      <span className="ml-2 text-zinc-500 dark:text-zinc-400">(beta, symbolic)</span>
+                      {t.stake_amount} <span className="text-zinc-500">(beta)</span>
                     </div>
                   ) : null}
                 </div>
 
-                {/* share */}
                 <div className="flex flex-col items-start sm:items-end gap-2">
                   {isPublic ? (
                     <>
@@ -251,21 +235,13 @@ export default function TrajectoryPage() {
                       Private draft (owner only).
                     </div>
                   )}
-
-                  {!me ? (
-                    <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                      Not signed in.
-                    </div>
-                  ) : isOwner ? (
-                    <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                      You are the owner.
-                    </div>
+                  {isOwner ? (
+                    <div className="text-[11px] text-zinc-500 dark:text-zinc-400">You are the owner.</div>
                   ) : null}
                 </div>
               </div>
             </div>
 
-            {/* amendments */}
             <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
               <div className="text-sm font-semibold">Amendments</div>
               <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
@@ -284,9 +260,7 @@ export default function TrajectoryPage() {
                       <div className="text-xs text-zinc-500 dark:text-zinc-400">
                         <span className="uppercase">{a.kind}</span> · {fmtDate(a.created_at)}
                       </div>
-                      <div className="mt-2 text-sm text-zinc-700 dark:text-zinc-200">
-                        {a.content}
-                      </div>
+                      <div className="mt-2 text-sm text-zinc-700 dark:text-zinc-200">{a.content}</div>
                     </div>
                   ))
                 )}
