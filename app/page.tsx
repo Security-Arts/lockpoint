@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
@@ -325,18 +324,19 @@ const EXAMPLES = [
 
           <button
             type="button"
-            onClick={() => {
-              const subject = encodeURIComponent("Lockpoint feedback");
-              const body = encodeURIComponent(
-                `From: ${fbEmail || "(not provided)"}\n\nMessage:\n${fbMsg || ""}`
-              );
-              window.location.href =
-                "mailto:a.lutsyna@gmail.com?subject=" +
-                subject +
-                "&body=" +
-                body;
-              setFbSent(true);
-            }}
+       onClick={() => {
+  const subject = encodeURIComponent("Lockpoint feedback");
+  const body = encodeURIComponent(
+    `From: ${fbEmail || "(not provided)"}\n\nMessage:\n${fbMsg || ""}`
+  );
+
+  window.location.href =
+    "mailto:a.lutsyna@gmail.com?subject=" + subject + "&body=" + body;
+
+  setFbEmail("");
+  setFbMsg("");
+  setFbSent(true);
+}}
             className="mt-4 h-11 rounded-full border border-zinc-200 bg-white px-5 text-sm font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
           >
             Send
