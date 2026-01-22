@@ -217,6 +217,11 @@ const EXAMPLES = [
               className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
               placeholder="e.g. No social media for 12 months"
             />
+            {draftTitle.trim().length > 0 && draftTitle.trim().length < 3 && (
+  <div className="mt-1 text-xs text-zinc-500">
+    Minimum 3 characters
+  </div>
+)}
           </div>
 
           <div className="mt-4">
@@ -228,6 +233,11 @@ const EXAMPLES = [
               rows={3}
               placeholder='Example: "I will delete all social media by 2026-02-01 and not return for 12 months."'
             />
+            {draftCommitment.trim().length > 0 && draftCommitment.trim().length < 8 && (
+  <div className="mt-1 text-xs text-zinc-500">
+    Minimum 8 characters
+  </div>
+)}
           </div>
 
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
