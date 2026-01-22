@@ -59,24 +59,27 @@ export default function Home() {
   const [fbMsg, setFbMsg] = useState("");
   const [fbSent, setFbSent] = useState(false);
 
-  async function loadLatest() {
-    setLoadingList(true);
-    const { data, error } = await supabase
-      .from("trajectories")
-      .select("id,title,commitment,status,created_at,locked_at,deadline_at")
-      .in("status", ["locked", "completed", "failed"])
-      .order("locked_at", { ascending: false, nullsFirst: false })
-      .limit(12);
+ async function loadLatest() {
+  setLoadingList(true);
 
-    if (error) {
-      console.error(error);
-      setItems([]);
-      setLoadingList(false);
-      return;
-    }
-    setItems((data ?? []) as Trajectory[]);
+  const { data, error } = await supabase
+    .from("trajectories")
+    .select("id,title,commitment,status,created_at,locked_at,deadline_at")
+    .eq("is_public", true)
+    .in("status", ["locked", "completed", "failed"])
+    .order("locked_at", { ascending: false, nullsFirst: false })
+    .limit(12);
+
+  if (error) {
+    console.error(error);
+    setItems([]);
     setLoadingList(false);
+    return;
   }
+
+  setItems((data ?? []) as Trajectory[]);
+  setLoadingList(false);
+}
 
   useEffect(() => {
     loadLatest();
