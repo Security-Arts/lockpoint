@@ -213,7 +213,7 @@ export default function Home() {
               onChange={(e) => setDraftCommitment(e.target.value)}
               className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
               rows={3}
-              placeholder='One sentence. Example: "I will delete all social media by 2026-02-01 and not return for 12 months."'
+              placeholder='Example: "I will delete all social media by 2026-02-01 and not return for 12 months."'
             />
           </div>
 
