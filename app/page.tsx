@@ -146,12 +146,23 @@ export default function Home() {
     setFbSent(true);
   }
 
-  const EXAMPLES = [
-    "Delete all social media accounts for 12 months",
-    "Run a marathon before Oct 2026",
-    "Stop alcohol for 180 days",
-    "Read 20 books in 2026",
-  ];
+const EXAMPLES = [
+  // Life
+  "Delete all social media for 12 months",
+  "Run a marathon before 2026-10-01",
+  "No alcohol for 180 days",
+  "Read 20 books in 2026",
+
+  // Business
+  "Launch a product and make 10 sales by 2026-04-01",
+  "Reach $10,000 monthly revenue by 2026-09-01",
+  "Ship one release every week for 12 weeks",
+  "Sign 3 paying B2B clients by 2026-03-31",
+
+  // Finance
+  "Save $5,000 cash by 2026-06-30",
+  "Pay off $2,000 of debt by 2026-05-01",
+];
 
   return (
     <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
