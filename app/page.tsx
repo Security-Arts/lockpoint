@@ -68,7 +68,7 @@ function statusPill(statusRaw?: string | null) {
   );
 }
 
-type StatusFilter = "all" | "locked" | "completed" | "dropped";
+type StatusFilter = "all" | "locked" | "completed" | "failed";
 type DeadlineFilter = "any" | "this_week" | "this_month" | "expired";
 type SortMode = "newest" | "deadline" | "recently_locked";
 
@@ -150,16 +150,13 @@ export default function Home() {
         "id,title,commitment,status,created_at,locked_at,deadline_at,stake_amount,stake_currency"
       )
       .eq("is_public", true);
-
-    // Status filter
-    if (statusFilter === "all") {
-      q = q.in("status", ["locked", "completed", "dropped", "failed"]);
-    } else if (statusFilter === "dropped") {
-      // tolerate old 'failed' values
-      q = q.in("status", ["dropped", "failed"]);
-    } else {
-      q = q.eq("status", statusFilter);
-    }
+// Status filter (DB supports: draft, locked, completed, failed)
+// Public registry never shows drafts.
+if (statusFilter === "all") {
+  q = q.in("status", ["locked", "completed", "failed"]);
+} else {
+  q = q.eq("status", statusFilter); // locked | completed | failed
+}
 
     // Deadline filter
     // Note: These filters are approximate and rely on deadline_at being set.
@@ -429,10 +426,10 @@ export default function Home() {
                 onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
                 className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
               >
-                <option value="locked">Locked</option>
-                <option value="completed">Completed</option>
-                <option value="dropped">Dropped</option>
-                <option value="all">All</option>
+  <option value="locked">Locked</option>
+<option value="completed">Completed</option>
+<option value="failed">Dropped</option>
+<option value="all">All</option>
               </select>
             </div>
 
