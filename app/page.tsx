@@ -146,18 +146,17 @@ export default function Home() {
     // Always public, and never show drafts
     let q = supabase
       .from("trajectories")
-      .select(
-        "id,title,commitment,status,created_at,locked_at,deadline_at,stake_amount,stake_currency"
-      )
+      .select("id,title,status,created_at,locked_at,deadline_at,stake_amount,stake_currency")
       .eq("is_public", true);
 // Status filter (DB supports: draft, locked, completed, failed)
 // Public registry never shows drafts.
+// Status filter (DB: draft, locked, completed, failed)
+// Public registry never shows drafts
 if (statusFilter === "all") {
   q = q.in("status", ["locked", "completed", "failed"]);
 } else {
   q = q.eq("status", statusFilter); // locked | completed | failed
 }
-
     // Deadline filter
     // Note: These filters are approximate and rely on deadline_at being set.
     if (deadlineFilter === "this_week") {
