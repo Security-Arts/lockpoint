@@ -19,19 +19,13 @@ type TrajRow = {
   title: string | null;
   status: string | null;
   created_at: string;
+  updated_at?: string | null;
   locked_at: string | null;
   dropped_at: string | null;
   stake_amount: number | null;
   stake_currency: string | null;
   lock_reason: string | null;
-};
-
-type AmendRow = {
-  id: string;
-  trajectory_id: string;
-  created_at: string;
-  kind: string | null;
-  content: string | null;
+  is_public?: boolean | null;
 };
 
 function shortId(id: string) {
@@ -49,6 +43,36 @@ function fmtDate(iso?: string | null) {
   }
 }
 
+function normStatus(s?: string | null) {
+  return String(s ?? "").toLowerCase();
+}
+
+function statusBadge(status?: string | null) {
+  const s = normStatus(status);
+  if (s === "draft") return { label: "DRAFT", bg: "rgba(0,0,0,0.05)", fg: "rgba(0,0,0,0.75)" };
+  if (s === "locked") return { label: "LOCKED", bg: "rgba(0,0,0,0.08)", fg: "rgba(0,0,0,0.85)" };
+  if (s === "completed") return { label: "COMPLETED", bg: "rgba(0,0,0,0.10)", fg: "rgba(0,0,0,0.9)" };
+  if (s === "failed") return { label: "FAILED", bg: "rgba(0,0,0,0.10)", fg: "rgba(0,0,0,0.9)" };
+  return { label: (status ?? "—").toUpperCase(), bg: "rgba(0,0,0,0.05)", fg: "rgba(0,0,0,0.75)" };
+}
+
+function pillStyle(bg: string, fg: string): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "3px 10px",
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 700,
+    background: bg,
+    color: fg,
+    letterSpacing: 0.3,
+    border: "1px solid rgba(0,0,0,0.08)",
+    whiteSpace: "nowrap",
+  };
+}
+
 export default async function AdminPage({
   searchParams,
 }: {
@@ -61,21 +85,14 @@ export default async function AdminPage({
 
   if (!(provided && expected && provided === expected)) {
     return (
-      <div style={{ padding: 40 }}>
+      <div style={{ padding: 40, maxWidth: 760, margin: "0 auto" }}>
         <h1>Admin access denied</h1>
         <p>
           Open <code>/admin?key=YOUR_ADMIN_DASH_KEY</code>
         </p>
         <hr style={{ opacity: 0.2, margin: "16px 0" }} />
-        <div
-          style={{
-            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-            fontSize: 12,
-            opacity: 0.85,
-          }}
-        >
-          <div>provided_len: {provided.length}</div>
-          <div>expected_len: {expected.length}</div>
+        <div style={{ fontSize: 12, opacity: 0.75 }}>
+          Tip: keep the key long (40+ chars) and never share the URL.
         </div>
       </div>
     );
@@ -85,29 +102,36 @@ export default async function AdminPage({
   const service = process.env.SUPABASE_SERVICE_ROLE_KEY!;
   const supabase = createClient(url, service, { auth: { persistSession: false } });
 
-  // Load trajectories + recent locks + last OUTCOME amendments
+  // Data pulls (server role = bypass RLS)
   const [
     { data: all, error: allErr },
     { data: recentLocks, error: locksErr },
-    { data: outcomes, error: outErr },
+    { data: recentOutcomes, error: outErr },
   ] = await Promise.all([
     supabase
       .from("trajectories")
-      .select("id,title,status,created_at,locked_at,dropped_at,stake_amount,stake_currency,lock_reason")
+      .select(
+        "id,title,status,created_at,updated_at,locked_at,dropped_at,stake_amount,stake_currency,lock_reason,is_public"
+      )
       .order("created_at", { ascending: false })
-      .limit(500),
+      .limit(800),
     supabase
       .from("trajectories")
-      .select("id,title,status,created_at,locked_at,dropped_at,stake_amount,stake_currency,lock_reason")
+      .select(
+        "id,title,status,created_at,updated_at,locked_at,dropped_at,stake_amount,stake_currency,lock_reason,is_public"
+      )
       .not("locked_at", "is", null)
       .order("locked_at", { ascending: false })
-      .limit(10),
+      .limit(12),
+    // Outcomes should be derived from trajectory status (source of truth)
     supabase
-      .from("trajectory_amendments")
-      .select("id,trajectory_id,created_at,kind,content")
-      .eq("kind", "OUTCOME")
-      .order("created_at", { ascending: false })
-      .limit(200),
+      .from("trajectories")
+      .select(
+        "id,title,status,created_at,updated_at,locked_at,dropped_at,stake_amount,stake_currency,lock_reason,is_public"
+      )
+      .in("status", ["completed", "failed"])
+      .order("updated_at", { ascending: false })
+      .limit(50),
   ]);
 
   const err = allErr || locksErr || outErr;
@@ -122,33 +146,30 @@ export default async function AdminPage({
 
   const rows = (all ?? []) as TrajRow[];
   const locks = (recentLocks ?? []) as TrajRow[];
-  const outRows = (outcomes ?? []) as AmendRow[];
+  const outcomes = (recentOutcomes ?? []) as TrajRow[];
 
-  const lockedIds = new Set(
-    rows
-      .filter((r) => !!r.locked_at || (r.status ?? "").toLowerCase() === "locked")
-      .map((r) => r.id)
-  );
-
-  const completedIds = new Set(outRows.map((o) => o.trajectory_id));
-
+  // Metrics (truth = trajectories.status)
   const totalTraj = rows.length;
-  const totalLocks = lockedIds.size;
-  const drafts = rows.filter((r) => (r.status ?? "").toLowerCase() === "draft").length;
+  const drafts = rows.filter((r) => normStatus(r.status) === "draft").length;
+  const locked = rows.filter((r) => normStatus(r.status) === "locked").length;
+  const completed = rows.filter((r) => normStatus(r.status) === "completed").length;
+  const failed = rows.filter((r) => normStatus(r.status) === "failed").length;
 
-  // ✅ Active = locked but no OUTCOME
-  const active = Array.from(lockedIds).filter((id) => !completedIds.has(id)).length;
+  // Total locks = everything that has moved past draft
+  const totalLocks = locked + completed + failed;
 
-  // ✅ Completed = has OUTCOME
-  const completed = Array.from(lockedIds).filter((id) => completedIds.has(id)).length;
+  // Active = locked only (not finalized yet)
+  const active = locked;
 
-  // (поки що) Broken = 0 (бо ти ще не маєш result=FAIL)
-  const broken = 0;
+  // Dropped-drafts heuristic: failed + dropped_at present + locked_at null (optional, informational)
+  const droppedDrafts = rows.filter(
+    (r) => normStatus(r.status) === "failed" && !!r.dropped_at && !r.locked_at
+  ).length;
+
+  // Public count
+  const publicCount = rows.filter((r) => r.is_public === true).length;
 
   const refreshHref = `/admin?key=${encodeURIComponent(provided)}&t=${Date.now()}`;
-
-  // Map trajectories by id for outcomes rendering
-  const byId = new Map(rows.map((r) => [r.id, r] as const));
 
   return (
     <div style={page}>
@@ -164,46 +185,59 @@ export default async function AdminPage({
 
       <div style={grid}>
         <Metric title="Trajectories (loaded)" value={totalTraj} />
-        <Metric title="Total locks" value={totalLocks} />
+        <Metric title="Total locks (post-draft)" value={totalLocks} />
         <Metric title="Drafts" value={drafts} />
-        <Metric title="Active" value={active} />
+        <Metric title="Active (locked)" value={active} />
         <Metric title="Completed" value={completed} />
-        <Metric title="Broken" value={broken} />
+        <Metric title="Failed" value={failed} />
+        <Metric title="Public (is_public=true)" value={publicCount} />
+        <Metric title="Dropped drafts (heuristic)" value={droppedDrafts} />
       </div>
 
       <div style={{ height: 14 }} />
 
       <div style={card}>
-        <div style={{ fontWeight: 700, marginBottom: 10 }}>Recent locks</div>
+        <div style={{ fontWeight: 800, marginBottom: 10 }}>Recent locks</div>
         {locks.length === 0 ? (
           <div style={{ opacity: 0.75 }}>No locks found yet.</div>
         ) : (
           <div style={{ display: "grid", gap: 10 }}>
-            {locks.map((r) => (
-              <div key={r.id} style={lockRow}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 650, overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {r.title || "(untitled)"}
-                  </div>
-                  <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
-                    <span style={mono}>{shortId(r.id)}</span>{" "}
-                    {" · locked "} {fmtDate(r.locked_at)}
-                  </div>
-                  {r.lock_reason ? (
-                    <div style={{ fontSize: 12, opacity: 0.85, marginTop: 6, whiteSpace: "pre-wrap" }}>
-                      {r.lock_reason}
+            {locks.map((r) => {
+              const b = statusBadge(r.status);
+              return (
+                <div key={r.id} style={lockRow}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span style={pillStyle(b.bg, b.fg)}>{b.label}</span>
+                      {r.is_public ? <span style={pillStyle("rgba(0,0,0,0.08)", "rgba(0,0,0,0.85)")}>PUBLIC</span> : null}
                     </div>
-                  ) : null}
-                </div>
 
-                <div style={{ textAlign: "right", fontSize: 12, opacity: 0.9 }}>
-                  <div style={{ fontWeight: 650 }}>
-                    {r.stake_amount != null ? `${r.stake_amount} ${r.stake_currency || "USD"}` : "—"}
+                    <div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", marginTop: 6 }}>
+                      {r.title || "(untitled)"}
+                    </div>
+
+                    <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
+                      <span style={mono}>{shortId(r.id)}</span>
+                      {" · locked "} {fmtDate(r.locked_at)}
+                      {r.updated_at ? ` · updated ${fmtDate(r.updated_at)}` : ""}
+                    </div>
+
+                    {r.lock_reason ? (
+                      <div style={{ fontSize: 12, opacity: 0.9, marginTop: 6, whiteSpace: "pre-wrap" }}>
+                        {r.lock_reason}
+                      </div>
+                    ) : null}
                   </div>
-                  <div style={{ opacity: 0.7, marginTop: 4 }}>stake</div>
+
+                  <div style={{ textAlign: "right", fontSize: 12, opacity: 0.9 }}>
+                    <div style={{ fontWeight: 750 }}>
+                      {r.stake_amount != null ? `${r.stake_amount} ${r.stake_currency || "USD"}` : "—"}
+                    </div>
+                    <div style={{ opacity: 0.7, marginTop: 4 }}>stake</div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -211,35 +245,46 @@ export default async function AdminPage({
       <div style={{ height: 14 }} />
 
       <div style={card}>
-        <div style={{ fontWeight: 700, marginBottom: 10 }}>Outcomes</div>
-        {outRows.length === 0 ? (
+        <div style={{ fontWeight: 800, marginBottom: 10 }}>Recent outcomes (by status)</div>
+        {outcomes.length === 0 ? (
           <div style={{ opacity: 0.75 }}>No outcomes yet.</div>
         ) : (
           <div style={{ display: "grid", gap: 10 }}>
-            {outRows.slice(0, 10).map((o) => {
-              const t = byId.get(o.trajectory_id);
-              const txt = (o.content ?? "").trim();
+            {outcomes.slice(0, 12).map((r) => {
+              const b = statusBadge(r.status);
+              const isDroppedDraft = normStatus(r.status) === "failed" && !!r.dropped_at && !r.locked_at;
+
               return (
-                <div key={o.id} style={lockRow}>
+                <div key={r.id} style={lockRow}>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 650 }}>
-                      {t?.title || "(unknown trajectory)"}
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span style={pillStyle(b.bg, b.fg)}>{b.label}</span>
+                      {r.is_public ? <span style={pillStyle("rgba(0,0,0,0.08)", "rgba(0,0,0,0.85)")}>PUBLIC</span> : null}
+                      {isDroppedDraft ? (
+                        <span style={pillStyle("rgba(0,0,0,0.06)", "rgba(0,0,0,0.75)")}>DROPPED DRAFT</span>
+                      ) : null}
                     </div>
+
+                    <div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", marginTop: 6 }}>
+                      {r.title || "(untitled)"}
+                    </div>
+
                     <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
-                      <span style={mono}>{shortId(o.trajectory_id)}</span>
-                      {" · outcome "} {fmtDate(o.created_at)}
-                      {t?.locked_at ? ` · locked ${fmtDate(t.locked_at)}` : ""}
+                      <span style={mono}>{shortId(r.id)}</span>
+                      {r.locked_at ? ` · locked ${fmtDate(r.locked_at)}` : ""}
+                      {r.updated_at ? ` · updated ${fmtDate(r.updated_at)}` : ""}
                     </div>
-                    {txt ? (
+
+                    {r.lock_reason ? (
                       <div style={{ fontSize: 12, opacity: 0.9, marginTop: 6, whiteSpace: "pre-wrap" }}>
-                        {txt}
+                        {r.lock_reason}
                       </div>
                     ) : null}
                   </div>
 
                   <div style={{ textAlign: "right", fontSize: 12, opacity: 0.9 }}>
-                    <div style={{ fontWeight: 650 }}>
-                      {t?.stake_amount != null ? `${t.stake_amount} ${t.stake_currency || "USD"}` : "—"}
+                    <div style={{ fontWeight: 750 }}>
+                      {r.stake_amount != null ? `${r.stake_amount} ${r.stake_currency || "USD"}` : "—"}
                     </div>
                     <div style={{ opacity: 0.7, marginTop: 4 }}>stake</div>
                   </div>
@@ -257,7 +302,7 @@ function Metric({ title, value }: { title: string; value: any }) {
   return (
     <div style={metricCard}>
       <div style={{ fontSize: 12, opacity: 0.7 }}>{title}</div>
-      <div style={{ fontSize: 20, fontWeight: 750, marginTop: 6 }}>{value ?? "—"}</div>
+      <div style={{ fontSize: 20, fontWeight: 800, marginTop: 6 }}>{value ?? "—"}</div>
     </div>
   );
 }
@@ -290,7 +335,7 @@ const card: React.CSSProperties = {
 };
 const refreshLink: React.CSSProperties = {
   fontSize: 12,
-  fontWeight: 650,
+  fontWeight: 750,
   textDecoration: "none",
   borderBottom: "1px solid rgba(0,0,0,0.35)",
   paddingBottom: 2,
