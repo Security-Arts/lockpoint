@@ -522,7 +522,10 @@ export default function Home() {
               type="button"
               disabled={page <= 1 || loadingList}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="h-10 rounded-full border border-zinc-200 bg-white px-4 text-sm font-medium hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+              className="h-10 rounded-full border border-zinc-200 bg-white px-4 text-sm font-medium
+hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60
+focus:outline-none focus:ring-2 focus:ring-zinc-400/40
+dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
             >
               ← Prev
             </button>
@@ -533,7 +536,10 @@ export default function Home() {
               type="button"
               disabled={!hasMore || loadingList}
               onClick={() => setPage((p) => p + 1)}
-              className="h-10 rounded-full border border-zinc-200 bg-white px-4 text-sm font-medium hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+              className="h-10 rounded-full border border-zinc-200 bg-white px-4 text-sm font-medium
+hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60
+focus:outline-none focus:ring-2 focus:ring-zinc-400/40
+dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
             >
               Next →
             </button>
