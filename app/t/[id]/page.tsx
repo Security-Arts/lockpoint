@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-type TrajectoryStatus = "draft" | "locked" | "completed" | "failed" | "dropped";
+type TrajectoryStatus = "draft" | "locked" | "completed" | "failed";
 
 type Trajectory = {
   id: string;
@@ -99,17 +99,16 @@ export default function TrajectoryPage() {
   const isDraft = statusLower === "draft";
   const isLocked = statusLower === "locked";
   const isFinal = statusLower === "completed" || statusLower === "failed";
-  const isDropped = !!t?.dropped_at || statusLower === "dropped";
+  const isDropped = !!t?.dropped_at || statusLower === "failed";
 
   // PUBLIC RULE:
   // - You asked: "public only by choice (is_public)"
   // - If DB has is_public: use it.
   // - If not: fallback to old behavior (public if locked/final).
-  const isPublic = useMemo(() => {
-    if (!t) return false;
-    if (typeof t.is_public === "boolean") return t.is_public;
-    return isPublicByStatus(t.status);
-  }, [t]);
+const isPublic = useMemo(() => {
+  if (!t) return false;
+  return t.is_public === true;
+}, [t]);
 
   const shareUrl = useMemo(() => {
     if (typeof window === "undefined") return "";
@@ -152,8 +151,7 @@ export default function TrajectoryPage() {
   }, [t, isOwner, isDraft, lockCoreOk, canLockTyped]);
 
   const amendMinLen = useMemo(() => {
-    if (amendKind === "DROP") return 1;
-    if (amendKind === "NOTE") return 3;
+        if (amendKind === "NOTE") return 3;
     return 5;
   }, [amendKind]);
 
@@ -161,7 +159,7 @@ export default function TrajectoryPage() {
     if (!t) return "Loading…";
     if (!isOwner) return "Owner only.";
     if (isDraft) return "Lock first. Amendments start after lock.";
-    if (isDropped) return "Dropped records are private and closed.";
+    if (isFinal) return "Finalized records are closed.";
     if (isFinal && amendKind === "OUTCOME") return "Outcome already finalized.";
     if (amendKind === "OUTCOME" && !isLocked) return "Outcome can be recorded only from LOCKED state.";
     if (amendConfirm.trim().toUpperCase() !== "AMEND") return 'Type "AMEND" to record.';
@@ -219,27 +217,14 @@ export default function TrajectoryPage() {
         return;
       }
 
-      const publicByFlag = typeof traj?.is_public === "boolean" ? traj.is_public : null;
-      const publicByStatus = isPublicByStatus(traj?.status);
 
-      if (!ownerOk) {
-        if (publicByFlag === true) {
-          // ok
-        } else if (publicByFlag === false) {
-          setT(null);
-          setAmends([]);
-          setToast("Private record.");
-          return;
-        } else {
-          // no column -> fallback
-          if (!publicByStatus) {
-            setT(null);
-            setAmends([]);
-            setToast("Forbidden.");
-            return;
-          }
-        }
-      }
+// Non-owner can view ONLY if is_public = true
+if (!ownerOk && traj?.is_public !== true) {
+  setT(null);
+  setAmends([]);
+  setToast("Private record.");
+  return;
+}
 
       setT(traj as Trajectory);
 
@@ -341,9 +326,10 @@ export default function TrajectoryPage() {
       const { error: upErr } = await supabase
         .from("trajectories")
         .update({
-          status: "dropped",
-          dropped_at: new Date().toISOString(),
-        })
+  status: "failed",
+  dropped_at: new Date().toISOString(),
+  is_public: false, // щоб точно не попав у public registry
+})
         .eq("id", id);
 
       if (upErr) throw upErr;
