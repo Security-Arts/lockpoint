@@ -8,7 +8,7 @@ type Trajectory = {
   id: string;
   title: string;
   commitment?: string | null;
-  status: string | null;
+  status: "draft" | "locked" | "completed" | "failed" | string | null;
   created_at: string;
   locked_at?: string | null;
   deadline_at?: string | null;
@@ -37,15 +37,14 @@ function fmtDate(iso?: string | null) {
 
 function statusPill(statusRaw?: string | null) {
   const s = String(statusRaw ?? "").toLowerCase();
+
   const label =
     s === "locked"
       ? "LOCKED"
       : s === "completed"
       ? "COMPLETED"
-      : s === "dropped"
-      ? "DROPPED"
       : s === "failed"
-      ? "DROPPED"
+      ? "FAILED"
       : s
       ? s.toUpperCase()
       : "—";
@@ -55,8 +54,8 @@ function statusPill(statusRaw?: string | null) {
       ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200"
       : s === "completed"
       ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
-      : s === "dropped" || s === "failed"
-      ? "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200"
+      : s === "failed"
+      ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
       : "border-zinc-200 bg-white text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200";
 
   return (
@@ -85,21 +84,17 @@ function getStartOfTodayISO() {
 }
 
 const EXAMPLES = [
-  // Life
-  "Delete all social media for 12 months",
-  "Run a marathon before 2026-10-01",
-  "No alcohol for 180 days",
-  "Read 50 books in 2026",
-
   // Business
   "Launch a product and make 10 sales by 2026-04-01",
   "Reach $10,000 monthly revenue by 2026-09-01",
   "Ship one release every week for 12 weeks",
   "Sign 3 paying B2B clients by 2026-03-31",
-
-  // Finance
-  "Save $5,000 cash by 2026-06-30",
-  "Pay off $2,000 of debt by 2026-05-01",
+    // Life
+  "Delete all social media for 12 months",
+  "Visit 8 countries in 2026 ",
+  "Run a marathon before 2026-10-01",
+  "No alcohol for 180 days",
+  "Read 50 books in 2026",
 ];
 
 export default function Home() {
@@ -143,39 +138,32 @@ export default function Home() {
   async function loadRegistry(p: number) {
     setLoadingList(true);
 
-    // Always public, and never show drafts
+    // Public registry:
+    // - only is_public=true
+    // - never show drafts
     let q = supabase
       .from("trajectories")
       .select("id,title,status,created_at,locked_at,deadline_at,stake_amount,stake_currency")
       .eq("is_public", true);
-// Status filter (DB supports: draft, locked, completed, failed)
-// Public registry never shows drafts.
-// Status filter (DB: draft, locked, completed, failed)
-// Public registry never shows drafts
-if (statusFilter === "all") {
-  q = q.in("status", ["locked", "completed", "failed"]);
-} else {
-  q = q.eq("status", statusFilter); // locked | completed | failed
-}
+
+    // Status filter (DB supports: draft, locked, completed, failed)
+    if (statusFilter === "all") {
+      q = q.in("status", ["locked", "completed", "failed"]);
+    } else {
+      q = q.eq("status", statusFilter);
+    }
+
     // Deadline filter
-    // Note: These filters are approximate and rely on deadline_at being set.
     if (deadlineFilter === "this_week") {
-      q = q.gte("deadline_at", getStartOfTodayISO()).lte(
-        "deadline_at",
-        getISODatePlusDays(7)
-      );
+      q = q.gte("deadline_at", getStartOfTodayISO()).lte("deadline_at", getISODatePlusDays(7));
     } else if (deadlineFilter === "this_month") {
-      q = q.gte("deadline_at", getStartOfTodayISO()).lte(
-        "deadline_at",
-        getISODatePlusDays(31)
-      );
+      q = q.gte("deadline_at", getStartOfTodayISO()).lte("deadline_at", getISODatePlusDays(31));
     } else if (deadlineFilter === "expired") {
       q = q.lt("deadline_at", getStartOfTodayISO());
     }
 
     // Stake filter
     if (withStakeOnly) {
-      // if stake_amount is null, exclude it
       q = q.not("stake_amount", "is", null);
     }
 
@@ -186,16 +174,15 @@ if (statusFilter === "all") {
       q = q.order("locked_at", { ascending: false, nullsFirst: false });
     } else {
       // newest
-      // If locked_at is missing (e.g. completed migrated), fallback to created_at
-      q = q.order("locked_at", { ascending: false, nullsFirst: false }).order(
-        "created_at",
-        { ascending: false }
-      );
+      q = q.order("locked_at", { ascending: false, nullsFirst: false }).order("created_at", {
+        ascending: false,
+      });
     }
 
-    // Pagination (fetch one extra row to detect "hasMore")
+    // Pagination:
+    // Supabase range(from,to) is inclusive, so we fetch PAGE_SIZE+1 rows.
     const from = (p - 1) * PAGE_SIZE;
-    const to = from + PAGE_SIZE; // inclusive end in Supabase range
+    const to = from + PAGE_SIZE; // PAGE_SIZE + 1 rows
     const { data, error } = await q.range(from, to);
 
     if (error) {
@@ -212,13 +199,13 @@ if (statusFilter === "all") {
     setLoadingList(false);
   }
 
-  // Reload when filters change
+  // Reset paging when filters change
   useEffect(() => {
     resetPaging();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, deadlineFilter, withStakeOnly, sortMode]);
 
-  // Reload on page or filter reset
+  // Load registry
   useEffect(() => {
     loadRegistry(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -258,6 +245,7 @@ if (statusFilter === "all") {
         title,
         commitment,
         status: "draft",
+        is_public: false, // ✅ default private
       })
       .select("id")
       .single();
@@ -278,12 +266,9 @@ if (statusFilter === "all") {
   function sendFeedbackMailto() {
     setFbSent(false);
     const subject = encodeURIComponent("Lockpoint feedback");
-    const body = encodeURIComponent(
-      `From: ${fbEmail || "(not provided)"}\n\nMessage:\n${fbMsg || ""}`
-    );
+    const body = encodeURIComponent(`From: ${fbEmail || "(not provided)"}\n\nMessage:\n${fbMsg || ""}`);
 
-    window.location.href =
-      "mailto:a.lutsyna@gmail.com?subject=" + subject + "&body=" + body;
+    window.location.href = "mailto:a.lutsyna@gmail.com?subject=" + subject + "&body=" + body;
 
     setFbEmail("");
     setFbMsg("");
@@ -319,9 +304,7 @@ if (statusFilter === "all") {
             >
               Lock a decision →
             </Link>
-            <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
-              Drafts + lock + outcomes
-            </span>
+            <span className="text-[11px] text-zinc-500 dark:text-zinc-400">Drafts + lock + outcomes</span>
           </div>
         </div>
 
@@ -331,9 +314,7 @@ if (statusFilter === "all") {
           <div className="mt-3 space-y-2 text-sm text-zinc-700 dark:text-zinc-200">
             {EXAMPLES.map((x) => (
               <div key={x} className="flex gap-3">
-                <span className="select-none font-mono text-zinc-400 dark:text-zinc-500">
-                  —
-                </span>
+                <span className="select-none font-mono text-zinc-400 dark:text-zinc-500">—</span>
                 <span>{x}</span>
               </div>
             ))}
@@ -356,9 +337,7 @@ if (statusFilter === "all") {
               placeholder="e.g. No social media for 12 months"
             />
             {draftTitle.trim().length > 0 && draftTitle.trim().length < 3 && (
-              <div className="mt-1 text-xs text-zinc-500">
-                Minimum 3 characters
-              </div>
+              <div className="mt-1 text-xs text-zinc-500">Minimum 3 characters</div>
             )}
           </div>
 
@@ -371,12 +350,9 @@ if (statusFilter === "all") {
               rows={3}
               placeholder='Example: "I will delete all social media by 2026-02-01 and not return for 12 months."'
             />
-            {draftCommitment.trim().length > 0 &&
-              draftCommitment.trim().length < 8 && (
-                <div className="mt-1 text-xs text-zinc-500">
-                  Minimum 8 characters
-                </div>
-              )}
+            {draftCommitment.trim().length > 0 && draftCommitment.trim().length < 8 && (
+              <div className="mt-1 text-xs text-zinc-500">Minimum 8 characters</div>
+            )}
           </div>
 
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -403,7 +379,7 @@ if (statusFilter === "all") {
             <div>
               <div className="text-sm font-semibold">Registry (public)</div>
               <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-                Locked and finalized records only.
+                Public records only (is_public = true).
               </div>
             </div>
             <Link
@@ -425,10 +401,10 @@ if (statusFilter === "all") {
                 onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
                 className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
               >
-  <option value="locked">Locked</option>
-<option value="completed">Completed</option>
-<option value="failed">Dropped</option>
-<option value="all">All</option>
+                <option value="locked">Locked</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+                <option value="all">All</option>
               </select>
             </div>
 
@@ -438,9 +414,7 @@ if (statusFilter === "all") {
               </label>
               <select
                 value={deadlineFilter}
-                onChange={(e) =>
-                  setDeadlineFilter(e.target.value as DeadlineFilter)
-                }
+                onChange={(e) => setDeadlineFilter(e.target.value as DeadlineFilter)}
                 className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
               >
                 <option value="any">Any</option>
@@ -467,12 +441,8 @@ if (statusFilter === "all") {
 
             <div className="flex items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/5">
               <div>
-                <div className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">
-                  Stake
-                </div>
-                <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                  Show only records with stake
-                </div>
+                <div className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">Stake</div>
+                <div className="text-[11px] text-zinc-500 dark:text-zinc-400">Show only records with stake</div>
               </div>
               <button
                 type="button"
@@ -496,13 +466,9 @@ if (statusFilter === "all") {
           {/* List */}
           <div className="mt-5 space-y-2">
             {loadingList ? (
-              <div className="text-sm text-zinc-600 dark:text-zinc-300">
-                Loading…
-              </div>
+              <div className="text-sm text-zinc-600 dark:text-zinc-300">Loading…</div>
             ) : items.length === 0 ? (
-              <div className="text-sm text-zinc-600 dark:text-zinc-300">
-                No records found.
-              </div>
+              <div className="text-sm text-zinc-600 dark:text-zinc-300">No records found.</div>
             ) : (
               items.map((t) => (
                 <Link
@@ -512,9 +478,7 @@ if (statusFilter === "all") {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-sm font-medium truncate">
-                        {t.title}
-                      </div>
+                      <div className="text-sm font-medium truncate">{t.title}</div>
                       <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
                         <span className="font-mono">{shortId(t.id)}</span>
                         {t.deadline_at ? (
@@ -563,9 +527,7 @@ if (statusFilter === "all") {
               ← Prev
             </button>
 
-            <div className="text-xs text-zinc-500 dark:text-zinc-400">
-              Page {page}
-            </div>
+            <div className="text-xs text-zinc-500 dark:text-zinc-400">Page {page}</div>
 
             <button
               type="button"
@@ -581,9 +543,7 @@ if (statusFilter === "all") {
         {/* Feedback */}
         <div className="mt-10 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
           <div className="text-sm font-semibold">Feedback</div>
-          <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-            Tell me what broke or what you want next.
-          </div>
+          <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">Tell me what broke or what you want next.</div>
 
           <div className="mt-4">
             <label className="text-xs font-medium">Email</label>
@@ -616,27 +576,20 @@ if (statusFilter === "all") {
           </button>
 
           {fbSent ? (
-            <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-              Sent. Thank you.
-            </div>
+            <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">Sent. Thank you.</div>
           ) : null}
         </div>
 
-        {/* Footer links (minimal legal) */}
+        {/* Footer links */}
         <div className="mt-10 flex flex-wrap items-center gap-4 text-xs text-zinc-500 dark:text-zinc-400">
-          <span className="opacity-80">
-            Lockpoint is not a legal or financial enforcement system.
-          </span>
+          <span className="opacity-80">Lockpoint is not a legal or financial enforcement system.</span>
           <Link href="/terms" className="hover:text-zinc-900 dark:hover:text-white">
             Terms
           </Link>
           <Link href="/privacy" className="hover:text-zinc-900 dark:hover:text-white">
             Privacy
           </Link>
-          <Link
-            href="/disclaimer"
-            className="hover:text-zinc-900 dark:hover:text-white"
-          >
+          <Link href="/disclaimer" className="hover:text-zinc-900 dark:hover:text-white">
             Disclaimer
           </Link>
         </div>
