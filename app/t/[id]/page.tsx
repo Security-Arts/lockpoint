@@ -82,7 +82,6 @@ export default function TrajectoryPage() {
   const [stakePreset, setStakePreset] = useState<number | null>(null);
   const [stakeCustom, setStakeCustom] = useState<string>("");
   const [deadlineLocal, setDeadlineLocal] = useState<string>(""); // input type="datetime-local"
-  const [makePublic, setMakePublic] = useState<boolean>(false);
 
   // AMEND UI
   const [amendKind, setAmendKind] = useState<AmendmentKind>("MILESTONE");
@@ -293,7 +292,7 @@ if (!ownerOk && traj?.is_public !== true) {
       };
 
       // only send if you have this column
-      payload.is_public = makePublic;
+      payload.is_public = true;
 
       const { error } = await supabase.from("trajectories").update(payload).eq("id", id);
       if (error) throw error;
@@ -536,23 +535,6 @@ if (!ownerOk && traj?.is_public !== true) {
                       <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
                         Format is international (YYYY-MM-DD).
                       </div>
-                    </div>
-
-                    {/* Public choice */}
-                    <div className="mt-4 flex items-center gap-3">
-                      <input
-                        id="is_public"
-                        type="checkbox"
-                        checked={makePublic}
-                        onChange={(e) => setMakePublic(e.target.checked)}
-                        className="h-4 w-4"
-                      />
-                      <label htmlFor="is_public" className="text-xs text-zinc-700 dark:text-zinc-200">
-                        Make public after lock (is_public)
-                      </label>
-                    </div>
-                    <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                      If your DB doesn’t have <span className="font-mono">is_public</span> column yet, add it first.
                     </div>
 
                     {/* Reason */}
