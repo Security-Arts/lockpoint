@@ -225,17 +225,17 @@ export default function MyCabinetPage() {
     // ✅ avoid timezone-shift: store at 12:00Z for date-only input
     const deadlineISO = deadline ? `${deadline}T12:00:00.000Z` : null;
 
-    const payload: Record<string, any> = {
-      title,
-      commitment,
-      status: "locked",
-      locked_at: new Date().toISOString(),
-      deadline_at: deadlineISO,
-      stake_amount: stakeAmount ?? null,
-      stake_currency: stakeAmount ? "USD" : null,
-      lock_reason: reason?.trim() ? reason.trim() : null,
-      is_public: makePublic === true,
-    };
+const payload = {
+  title,
+  commitment,
+  status: "locked",
+  locked_at: new Date().toISOString(),
+  deadline_at: deadlineISO,
+  stake_amount: stakeAmount ?? null,
+  stake_currency: stakeAmount ? "USD" : null,
+  lock_reason: reason?.trim() ? reason.trim() : null,
+  is_public: true, 
+};
 
     // atomic: only lock if still draft
     const { data: updated, error } = await supabase
