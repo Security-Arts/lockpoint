@@ -229,9 +229,7 @@ if (!ownerOk && traj?.is_public !== true) {
 
       // Sync lock UI defaults
       setLockReason((traj as any)?.lock_reason ?? "");
-      setMakePublic(typeof (traj as any)?.is_public === "boolean" ? !!(traj as any).is_public : false);
-
-      if ((traj as any)?.deadline_at) {
+           if ((traj as any)?.deadline_at) {
         // convert ISO -> datetime-local value
         const d = new Date((traj as any).deadline_at);
         if (!Number.isNaN(d.getTime())) {
