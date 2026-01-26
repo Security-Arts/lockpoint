@@ -15,9 +15,10 @@ type Trajectory = {
   locked_at?: string | null;
   dropped_at?: string | null;
   deadline_at?: string | null;
+  is_public: boolean; // ✅ truth
 };
 
-type AmendmentKind = "MILESTONE" | "OUTCOME" | "NOTE" | "DROP";
+type AmendmentKind = "MILESTONE" | "OUTCOME" | "NOTE"; // ✅ DROP removed (UI action)
 type OutcomeResult = "COMPLETED" | "FAILED";
 
 function shortId(id: string) {
@@ -39,6 +40,10 @@ function fmtDate(iso?: string | null) {
   } catch {
     return String(iso);
   }
+}
+
+function norm(s?: string | null) {
+  return String(s ?? "").toLowerCase();
 }
 
 export default function MyCabinetPage() {
@@ -63,9 +68,13 @@ export default function MyCabinetPage() {
   const [stakePreset, setStakePreset] = useState<number | null>(null);
   const [stakeCustom, setStakeCustom] = useState<string>("");
 
+  // ✅ public toggle
+  const [makePublic, setMakePublic] = useState<boolean>(false);
+
   // Amend modal
   const [amendOpen, setAmendOpen] = useState(false);
   const [amendTrajectoryId, setAmendTrajectoryId] = useState<string | null>(null);
+  const [amendTrajectoryStatus, setAmendTrajectoryStatus] = useState<string>(""); // ✅ to restrict options
   const [amendKind, setAmendKind] = useState<AmendmentKind>("MILESTONE");
   const [amendBody, setAmendBody] = useState("");
   const [amendConfirm, setAmendConfirm] = useState("");
@@ -74,7 +83,7 @@ export default function MyCabinetPage() {
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
     return items.filter((t) => {
-      const status = (t.status ?? "").toLowerCase();
+      const status = norm(t.status);
       const matchFilter =
         filter === "all"
           ? true
@@ -98,10 +107,7 @@ export default function MyCabinetPage() {
     return t.length >= 3 && c.length >= 8;
   }, [lockCoreTitle, lockCoreCommitment]);
 
-  const canLockTyped = useMemo(
-    () => confirmText.trim().toUpperCase() === "LOCK",
-    [confirmText]
-  );
+  const canLockTyped = useMemo(() => confirmText.trim().toUpperCase() === "LOCK", [confirmText]);
 
   const stakeAmount = useMemo(() => {
     if (stakePreset != null) return stakePreset;
@@ -112,12 +118,16 @@ export default function MyCabinetPage() {
 
   const canLock = lockCoreOk && canLockTyped;
 
+  const amendMinLen = useMemo(() => {
+    if (amendKind === "NOTE") return 3;
+    return 5; // MILESTONE | OUTCOME
+  }, [amendKind]);
+
   const canAmend = useMemo(() => {
     const okWord = amendConfirm.trim().toUpperCase() === "AMEND";
     const len = amendBody.trim().length;
-    const minLen = amendKind === "DROP" ? 1 : 5;
-    return okWord && len >= minLen;
-  }, [amendConfirm, amendBody, amendKind]);
+    return okWord && len >= amendMinLen;
+  }, [amendConfirm, amendBody, amendMinLen]);
 
   async function loadMine() {
     setLoading(true);
@@ -135,10 +145,10 @@ export default function MyCabinetPage() {
 
       const { data, error } = await supabase
         .from("trajectories")
-        .select("id,owner_id,title,commitment,status,created_at,locked_at,dropped_at,deadline_at")
+        .select("id,owner_id,title,commitment,status,created_at,locked_at,dropped_at,deadline_at,is_public")
         .eq("owner_id", uid)
         .order("created_at", { ascending: false })
-        .limit(100);
+        .limit(120);
 
       if (error) throw error;
 
@@ -184,6 +194,9 @@ export default function MyCabinetPage() {
     setStakePreset(null);
     setStakeCustom("");
 
+    // ✅ public default from row (draft is normally false; but keep in sync)
+    setMakePublic(!!t.is_public);
+
     // deadline -> input YYYY-MM-DD
     setDeadline(t.deadline_at ? String(t.deadline_at).slice(0, 10) : "");
   }
@@ -209,15 +222,19 @@ export default function MyCabinetPage() {
       return;
     }
 
+    // ✅ avoid timezone-shift: store at 12:00Z for date-only input
+    const deadlineISO = deadline ? `${deadline}T12:00:00.000Z` : null;
+
     const payload: Record<string, any> = {
       title,
       commitment,
       status: "locked",
       locked_at: new Date().toISOString(),
-      deadline_at: deadline ? `${deadline}T00:00:00.000Z` : null,
+      deadline_at: deadlineISO,
       stake_amount: stakeAmount ?? null,
       stake_currency: stakeAmount ? "USD" : null,
       lock_reason: reason?.trim() ? reason.trim() : null,
+      is_public: makePublic === true,
     };
 
     // atomic: only lock if still draft
@@ -250,11 +267,40 @@ export default function MyCabinetPage() {
   function openAmendModal(t: Trajectory, kind: AmendmentKind) {
     setToast(null);
     setAmendTrajectoryId(t.id);
+    setAmendTrajectoryStatus(norm(t.status));
     setAmendKind(kind);
     setAmendBody("");
     setAmendConfirm("");
     setOutcomeResult("COMPLETED");
     setAmendOpen(true);
+  }
+
+  async function dropDraft(t: Trajectory) {
+    setToast(null);
+    const id = t.id;
+
+    const { data: dropped, error: dropErr } = await supabase
+      .from("trajectories")
+      .update({
+        dropped_at: new Date().toISOString(),
+        is_public: false, // ✅ always private
+      })
+      .eq("id", id)
+      .eq("status", "draft")
+      .select("id")
+      .maybeSingle();
+
+    if (dropErr) {
+      console.error(dropErr);
+      setToast("Drop error: " + dropErr.message);
+      return;
+    }
+    if (!dropped) {
+      setToast("Only drafts can be dropped.");
+      return;
+    }
+
+    await loadMine();
   }
 
   async function addAmendment() {
@@ -263,8 +309,14 @@ export default function MyCabinetPage() {
     setToast(null);
     const contentRaw = amendBody.trim();
 
+    // ✅ restrict by current status
+    const st = norm(amendTrajectoryStatus);
+    if (amendKind === "OUTCOME" && st !== "locked") {
+      setToast("Outcome can be recorded only while status is LOCKED.");
+      return;
+    }
     if (!canAmend) {
-      setToast('Type "AMEND" and provide text.');
+      setToast(`Type "AMEND" and provide at least ${amendMinLen} characters.`);
       return;
     }
 
@@ -288,28 +340,6 @@ export default function MyCabinetPage() {
 
       if (!updated) {
         setToast("Outcome already recorded (final). It cannot be changed.");
-        return;
-      }
-    }
-
-    // DROP: we mark dropped_at only for drafts, and also set status remains draft (optional)
-    if (amendKind === "DROP") {
-      const { data: dropped, error: dropErr } = await supabase
-        .from("trajectories")
-        .update({ dropped_at: new Date().toISOString() })
-        .eq("id", amendTrajectoryId)
-        .eq("status", "draft")
-        .select("id")
-        .maybeSingle();
-
-      if (dropErr) {
-        console.error(dropErr);
-        setToast("Drop error: " + dropErr.message);
-        return;
-      }
-
-      if (!dropped) {
-        setToast("Only drafts can be dropped.");
         return;
       }
     }
@@ -391,10 +421,11 @@ export default function MyCabinetPage() {
               <div className="text-sm text-zinc-600 dark:text-zinc-300">No records found.</div>
             ) : (
               filtered.map((t) => {
-                const status = (t.status ?? "").toLowerCase();
+                const status = norm(t.status);
                 const isLocked = status === "locked" || !!t.locked_at;
                 const isFinal = status === "completed" || status === "failed";
                 const isDraft = status === "draft" && !t.locked_at;
+                const isDroppedDraft = isDraft && !!t.dropped_at;
 
                 return (
                   <div
@@ -408,7 +439,20 @@ export default function MyCabinetPage() {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-sm font-semibold truncate">{t.title}</div>
+                        <div className="flex items-center gap-2">
+                          <div className="text-sm font-semibold truncate">{t.title}</div>
+                          {t.is_public ? (
+                            <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
+                              PUBLIC
+                            </span>
+                          ) : null}
+                          {isDroppedDraft ? (
+                            <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
+                              DROPPED
+                            </span>
+                          ) : null}
+                        </div>
+
                         <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
                           <span className="font-mono">{shortId(t.id)}</span>
                           {" · "}
@@ -437,7 +481,7 @@ export default function MyCabinetPage() {
                             <>
                               {" · "}
                               <span className="text-zinc-600 dark:text-zinc-300">
-                                DROPPED {fmtDate(t.dropped_at)}
+                                dropped {fmtDate(t.dropped_at)}
                               </span>
                             </>
                           ) : null}
@@ -462,7 +506,7 @@ export default function MyCabinetPage() {
                           Open
                         </Link>
 
-                        {isDraft ? (
+                        {isDraft && !isDroppedDraft ? (
                           <div className="flex gap-2">
                             <button
                               type="button"
@@ -475,7 +519,7 @@ export default function MyCabinetPage() {
                             <button
                               type="button"
                               className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-                              onClick={() => openAmendModal(t, "DROP")}
+                              onClick={() => dropDraft(t)}
                             >
                               DROP
                             </button>
@@ -499,7 +543,7 @@ export default function MyCabinetPage() {
                           </div>
                         ) : (
                           <div className="text-[11px] text-zinc-500 dark:text-zinc-400 text-right">
-                            {isFinal ? "Finalized." : "—"}
+                            {isFinal ? "Finalized." : isDroppedDraft ? "Dropped." : "—"}
                           </div>
                         )}
                       </div>
@@ -578,6 +622,23 @@ export default function MyCabinetPage() {
                       onChange={(e) => setDeadline(e.target.value)}
                       className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
                     />
+                    <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
+                      Stored at 12:00Z to avoid timezone shift.
+                    </div>
+                  </div>
+
+                  {/* ✅ Public choice */}
+                  <div className="mt-4 flex items-center gap-3">
+                    <input
+                      id="is_public"
+                      type="checkbox"
+                      checked={makePublic}
+                      onChange={(e) => setMakePublic(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    <label htmlFor="is_public" className="text-xs text-zinc-700 dark:text-zinc-200">
+                      Make public after lock (is_public)
+                    </label>
                   </div>
 
                   <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
@@ -715,9 +776,15 @@ export default function MyCabinetPage() {
                   >
                     <option value="MILESTONE">AMEND — clarification / milestone</option>
                     <option value="NOTE">NOTE — short note</option>
-                    <option value="OUTCOME">OUTCOME — final result</option>
-                    <option value="DROP">DROP — discard draft</option>
+                    <option value="OUTCOME" disabled={norm(amendTrajectoryStatus) !== "locked"}>
+                      OUTCOME — final result (locked only)
+                    </option>
                   </select>
+                  {norm(amendTrajectoryStatus) !== "locked" ? (
+                    <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                      Outcome is available only while status is <span className="font-mono">locked</span>.
+                    </div>
+                  ) : null}
                 </div>
 
                 {amendKind === "OUTCOME" && (
@@ -762,14 +829,13 @@ export default function MyCabinetPage() {
                     onChange={(e) => setAmendBody(e.target.value)}
                     className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
                     rows={4}
-                    placeholder={
-                      amendKind === "OUTCOME"
-                        ? "Outcome note (facts). One sentence."
-                        : amendKind === "DROP"
-                        ? "Why are you dropping this draft? (facts)"
-                        : "What happened? (facts)"
-                    }
+                    placeholder={amendKind === "OUTCOME" ? "Outcome note (facts). One sentence." : "What happened? (facts)"}
                   />
+                  {amendBody.trim().length > 0 && amendBody.trim().length < amendMinLen ? (
+                    <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                      Minimum {amendMinLen} characters
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
