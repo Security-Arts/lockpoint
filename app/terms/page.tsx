@@ -1,108 +1,61 @@
-export const metadata = {
-  title: "Terms · Lockpoint",
-};
-
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="mt-8">
-      <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-        {title}
-      </h2>
-      <div className="mt-3 space-y-3 text-sm leading-relaxed text-zinc-700 dark:text-zinc-200">
-        {children}
-      </div>
-    </section>
-  );
-}
+import Link from "next/link";
 
 export default function TermsPage() {
-  const lastUpdated = "2026-01-01";
-
   return (
-    <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
-      <main className="mx-auto w-full max-w-3xl px-6 py-16">
-        <h1 className="text-3xl font-semibold tracking-tight">Terms of Use</h1>
-        <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-          Last updated: {lastUpdated}
+    <main className="mx-auto max-w-3xl px-6 py-16 text-sm text-zinc-800 dark:text-zinc-200">
+      <h1 className="text-2xl font-semibold mb-6">Terms of Use</h1>
+
+      <p className="mb-4 text-zinc-500">Last updated: 2026-01-01</p>
+
+      <section className="space-y-4">
+        <p>
+          Lockpoint is a public registry of irreversible decisions. By using this
+          service, you agree to the terms described below.
         </p>
 
-        <Section title="1. What Lockpoint is">
-          <p>
-            Lockpoint is a registry for recording decisions, commitments, and
-            outcomes.
-          </p>
-          <p>
-            It allows users to create drafts, lock decisions (irreversible), and
-            append amendments and outcomes.
-          </p>
-          <p>
-            Lockpoint does not verify truth, feasibility, or completion of any
-            commitment.
-          </p>
-        </Section>
+        <h2 className="text-lg font-semibold mt-6">1. Nature of the service</h2>
+        <p>
+          Lockpoint is not a legal, financial, or enforcement system. It does not
+          guarantee outcomes, rewards, penalties, or real-world execution of any
+          decision recorded on the platform.
+        </p>
 
-        <Section title="2. User responsibility">
-          <p>
-            You use Lockpoint voluntarily and remain fully responsible for your
-            actions and results.
-          </p>
-          <p>
-            You must ensure that anything you publish does not violate laws or
-            third-party rights.
-          </p>
-        </Section>
+        <h2 className="text-lg font-semibold mt-6">2. Drafts vs locked records</h2>
+        <p>
+          Drafts are private and visible only to their owner.
+        </p>
+        <p>
+          <strong>Once a record is locked, it becomes public by design.</strong>
+          Locked records are visible to anyone and may be shared, indexed,
+          cached, or stored by third parties.
+        </p>
+        <p>
+          Dropped drafts remain private and are never published.
+        </p>
 
-        <Section title="3. Immutability">
-          <p>
-            Once a record is locked, it cannot be edited or deleted. The record
-            can only be extended with amendments (and a final outcome where
-            applicable).
-          </p>
-        </Section>
+        <h2 className="text-lg font-semibold mt-6">3. User responsibility</h2>
+        <p>
+          You are solely responsible for the content you choose to lock. Do not
+          include sensitive, confidential, or illegal information in locked
+          records.
+        </p>
 
-        <Section title="4. Public records">
-          <p>
-            If you mark a record as public, it may be visible to anyone and may
-            be shared, cached, or indexed by third parties.
-          </p>
-          <p>You are responsible for content you choose to make public.</p>
-        </Section>
+        <h2 className="text-lg font-semibold mt-6">4. Immutability</h2>
+        <p>
+          Locked records cannot be edited or deleted. Amendments may be added,
+          but the original record remains unchanged.
+        </p>
 
-        <Section title="5. Prohibited use">
-          <p>You may not use Lockpoint to:</p>
-          <ul className="list-disc pl-5 space-y-2">
-            <li>impersonate others;</li>
-            <li>post illegal content;</li>
-            <li>harass, threaten, or defame;</li>
-            <li>publish third-party personal data without consent.</li>
-          </ul>
-        </Section>
+        <h2 className="text-lg font-semibold mt-6">5. Availability</h2>
+        <p>
+          The service is provided “as is” and may change, pause, or shut down at
+          any time without notice.
+        </p>
+      </section>
 
-        <Section title="6. Availability">
-          <p>
-            Lockpoint is provided “as is”. We may change, suspend, or discontinue
-            the service at any time.
-          </p>
-        </Section>
-
-        <Section title="7. Contact">
-          <p>
-            Questions:{" "}
-            <a
-              className="underline underline-offset-4"
-              href="mailto:a.lutsyna@gmail.com"
-            >
-              a.lutsyna@gmail.com
-            </a>
-          </p>
-        </Section>
-      </main>
-    </div>
+      <div className="mt-10 text-xs text-zinc-500">
+        <Link href="/" className="hover:underline">← Back to Home</Link>
+      </div>
+    </main>
   );
 }
