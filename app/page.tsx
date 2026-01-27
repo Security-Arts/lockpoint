@@ -277,7 +277,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
-      <main className="mx-auto  w-full max-w-3xl flex-col px-6 py-16">
+      <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-6 py-16">
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
