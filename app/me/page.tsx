@@ -627,20 +627,6 @@ const payload = {
                     </div>
                   </div>
 
-                  {/* ✅ Public choice */}
-                  <div className="mt-4 flex items-center gap-3">
-                    <input
-                      id="is_public"
-                      type="checkbox"
-                      checked={makePublic}
-                      onChange={(e) => setMakePublic(e.target.checked)}
-                      className="h-4 w-4"
-                    />
-                    <label htmlFor="is_public" className="text-xs text-zinc-700 dark:text-zinc-200">
-                      Make public after lock (is_public)
-                    </label>
-                  </div>
-
                   <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
                     {lockCoreOk ? "Core is valid." : "Minimum: title ≥ 3 chars, statement ≥ 8 chars."}
                   </div>
