@@ -586,20 +586,7 @@ dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
           ) : null}
         </div>
 
-        {/* Footer links */}
-        <div className="mt-10 flex flex-wrap items-center gap-4 text-xs text-zinc-500 dark:text-zinc-400">
-          <span className="opacity-80">Lockpoint is not a legal or financial enforcement system.</span>
-          <Link href="/terms" className="hover:text-zinc-900 dark:hover:text-white">
-            Terms
-          </Link>
-          <Link href="/privacy" className="hover:text-zinc-900 dark:hover:text-white">
-            Privacy
-          </Link>
-          <Link href="/disclaimer" className="hover:text-zinc-900 dark:hover:text-white">
-            Disclaimer
-          </Link>
-        </div>
-      </main>
+       </main>
     </div>
   );
 }
