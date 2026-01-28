@@ -21,10 +21,6 @@ type Trajectory = {
   lock_reason?: string | null;
   stake_amount?: number | null;
   stake_currency?: string | null;
-
-  // OPTIONAL DB FIELD (you asked for it)
-  // If your DB doesn't have this column yet, updates/selects will error until you add it.
-  is_public?: boolean | null;
 };
 
 type AmendmentKind = "MILESTONE" | "NOTE" | "OUTCOME" | "DROP";
@@ -107,7 +103,7 @@ export default function TrajectoryPage() {
   // - If not: fallback to old behavior (public if locked/final).
 const isPublic = useMemo(() => {
   if (!t) return false;
-  return t.is_public === true;
+  return isPublicByStatus(t.status);
 }, [t]);
 
   const shareUrl = useMemo(() => {
@@ -219,7 +215,9 @@ const isPublic = useMemo(() => {
 
 
 // Non-owner can view ONLY if is_public = true
-if (!ownerOk && traj?.is_public !== true) {
+const isPublicStatus = isPublicByStatus(status);
+
+if (!ownerOk && !isPublicStatus) {
   setT(null);
   setAmends([]);
   setToast("Private record.");
@@ -290,9 +288,7 @@ if (!ownerOk && traj?.is_public !== true) {
         deadline_at: deadlineISO,
       };
 
-      // only send if you have this column
-      payload.is_public = true;
-
+      
       const { error } = await supabase.from("trajectories").update(payload).eq("id", id);
       if (error) throw error;
 
