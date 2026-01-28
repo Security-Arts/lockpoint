@@ -134,10 +134,9 @@ export default function MyCabinetPage() {
     setToast(null);
 
     try {
-      const { data: u, error: uErr } = await supabase.auth.getUser();
-      if (uErr) throw uErr;
-
-      const uid = u.user?.id;
+const { data: s, error: sErr } = await supabase.auth.getSession();
+if (sErr) throw sErr;
+const uid = s.session?.user?.id;
       if (!uid) {
         setItems([]);
         return;
