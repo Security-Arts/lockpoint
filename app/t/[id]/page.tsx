@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import ShareBar from "@/components/ShareBar";
 
 type TrajectoryStatus = "draft" | "locked" | "completed" | "failed";
 
