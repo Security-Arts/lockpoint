@@ -55,7 +55,7 @@ export default function OnboardingPage() {
                 });
               } else {
                 navigator.clipboard.writeText(
-                  window.location.origin + "/onboarding"
+                url: `${window.location.origin}/onboarding`,
                 );
                 alert("Link copied.");
               }
