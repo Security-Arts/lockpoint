@@ -107,11 +107,13 @@ const isPublic = useMemo(() => {
 
 const shareUrl = useMemo(() => {
   if (typeof window === "undefined") return "";
+  if (!id) return "";
   return `${window.location.origin}/t/${id}`;
 }, [id]);
 
+
 async function shareRecord() {
-  if (!shareUrl) return;
+  if (!shareUrl || !t) return;
 
   try {
     if (navigator.share) {
