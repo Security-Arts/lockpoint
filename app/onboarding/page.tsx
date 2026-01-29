@@ -46,18 +46,28 @@ export default function OnboardingPage() {
 
           <button
             type="button"
-            onClick={() => {
-              if (navigator.share) {
-                navigator.share({
-                  title: "Lockpoint",
-                  text: "Lockpoint records decisions that cannot be edited or deleted.",
-                  url: window.location.origin + "/onboarding",
-                });
-              } else {
-                navigator.clipboard.writeText(
-                url: `${window.location.origin}/onboarding`,
-                );
+            onClick={async () => {
+              const url = `${window.location.origin}/onboarding`;
+
+              try {
+                if (navigator.share) {
+                  await navigator.share({
+                    title: "Lockpoint",
+                    text: "Lockpoint records decisions that cannot be edited or deleted.",
+                    url,
+                  });
+                  return;
+                }
+
+                await navigator.clipboard.writeText(url);
                 alert("Link copied.");
+              } catch {
+                try {
+                  await navigator.clipboard.writeText(url);
+                  alert("Link copied.");
+                } catch {
+                  alert("Could not share/copy link.");
+                }
               }
             }}
             className="h-12 rounded-full border border-zinc-200 bg-white px-6 text-sm font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
