@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import ShareBar from "@/components/ShareBar";
 
 type TrajectoryStatus = "draft" | "locked" | "completed" | "failed";
 
@@ -111,14 +110,27 @@ const isPublic = useMemo(() => {
     return `${window.location.origin}/t/${id}`;
   }, [id]);
 
-  async function copyShare() {
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      setToast("Link copied.");
-    } catch {
-      setToast("Could not copy link.");
+async function shareRecord() {
+  if (!shareUrl) return;
+
+  try {
+    if (navigator.share) {
+      await navigator.share({
+        title: t?.title ? `Lockpoint — ${t.title}` : "Lockpoint record",
+        text: t?.commitment
+          ? `Locked record: ${t.title}\n\n${t.commitment}`
+          : `Locked record: ${t?.title ?? "Record"}`,
+        url: shareUrl,
+      });
+      return;
     }
+
+    await navigator.clipboard.writeText(shareUrl);
+    setToast("Link copied.");
+  } catch {
+    setToast("Could not share/copy link.");
   }
+}
 
   const stakeAmount = useMemo(() => {
     if (stakePreset != null) return clampInt(stakePreset);
@@ -213,8 +225,8 @@ const isPublic = useMemo(() => {
         return;
       }
 
+// Non-owner can view ONLY if status is public (locked/completed/failed)
 
-// Non-owner can view ONLY if is_public = true
 const isPublicStatus = isPublicByStatus(status);
 
 if (!ownerOk && !isPublicStatus) {
@@ -481,13 +493,14 @@ if (!ownerOk && !isPublicStatus) {
                 <div className="flex flex-col items-start sm:items-end gap-2">
                   {isPublic ? (
                     <>
-                      <button
-                        type="button"
-                        onClick={copyShare}
-                        className="inline-flex h-9 items-center justify-center rounded-full bg-zinc-900 px-4 text-xs font-semibold text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-                      >
-                        Copy share link
-                      </button>
+              <button
+  type="button"
+  onClick={shareRecord}
+  className="inline-flex h-9 items-center justify-center rounded-full bg-zinc-900 px-4 text-xs font-semibold text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+>
+  Share
+</button>
+
                       <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
                         Public record.
                       </div>
