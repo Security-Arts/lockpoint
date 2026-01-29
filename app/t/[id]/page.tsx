@@ -106,7 +106,7 @@ const isPublic = useMemo(() => {
 }, [t]);
 
   const shareUrl = useMemo(() => {
-    if (typeof window === "undefined") return "";
+    if (typeof window === "undefined") return ";
     return `${window.location.origin}/t/${id}`;
   }, [id]);
 
