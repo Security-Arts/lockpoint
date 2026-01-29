@@ -105,10 +105,10 @@ const isPublic = useMemo(() => {
   return isPublicByStatus(t.status);
 }, [t]);
 
-  const shareUrl = useMemo(() => {
-    if (typeof window === "undefined") return ";
-    return `${window.location.origin}/t/${id}`;
-  }, [id]);
+const shareUrl = useMemo(() => {
+  if (typeof window === "undefined") return "";
+  return `${window.location.origin}/t/${id}`;
+}, [id]);
 
 async function shareRecord() {
   if (!shareUrl) return;
