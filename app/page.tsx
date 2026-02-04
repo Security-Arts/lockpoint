@@ -89,9 +89,9 @@ const EXAMPLES = [
   "Reach $10,000 monthly revenue by 2026-09-01",
   "Ship one release every week for 12 weeks",
   "Sign 3 paying B2B clients by 2026-03-31",
-    // Life
+  // Life
   "Delete all social media for 12 months",
-  "Visit 8 countries in 2026 ",
+  "Visit 8 countries in 2026",
   "Run a marathon before 2026-10-01",
   "No alcohol for 180 days",
   "Read 50 books in 2026",
@@ -276,10 +276,9 @@ export default function Home() {
   }
 
   return (
-<div className="bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
-  <main className="mx-auto w-full max-w-3xl px-6 py-16">
-
-    {/* Header */}
+    <div className="bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
+      <main className="mx-auto w-full max-w-3xl px-6 py-16">
+        {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-4xl font-semibold tracking-tight">Lockpoint</h1>
@@ -443,7 +442,9 @@ export default function Home() {
             <div className="flex items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/5">
               <div>
                 <div className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">Stake</div>
-                <div className="text-[11px] text-zinc-500 dark:text-zinc-400">Show only records with stake</div>
+                <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                  Show only records with stake
+                </div>
               </div>
               <button
                 type="button"
@@ -523,10 +524,7 @@ export default function Home() {
               type="button"
               disabled={page <= 1 || loadingList}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="h-10 rounded-full border border-zinc-200 bg-white px-4 text-sm font-medium
-hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60
-focus:outline-none focus:ring-2 focus:ring-zinc-400/40
-dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+              className="h-10 rounded-full border border-zinc-200 bg-white px-4 text-sm font-medium hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-zinc-400/40 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
             >
               ← Prev
             </button>
@@ -537,10 +535,7 @@ dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
               type="button"
               disabled={!hasMore || loadingList}
               onClick={() => setPage((p) => p + 1)}
-              className="h-10 rounded-full border border-zinc-200 bg-white px-4 text-sm font-medium
-hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60
-focus:outline-none focus:ring-2 focus:ring-zinc-400/40
-dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+              className="h-10 rounded-full border border-zinc-200 bg-white px-4 text-sm font-medium hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-zinc-400/40 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
             >
               Next →
             </button>
@@ -550,7 +545,9 @@ dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
         {/* Feedback */}
         <div className="mt-10 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
           <div className="text-sm font-semibold">Feedback</div>
-          <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">Tell me what broke or what you want next.</div>
+          <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+            Tell me what broke or what you want next.
+          </div>
 
           <div className="mt-4">
             <label className="text-xs font-medium">Email</label>
@@ -582,12 +579,9 @@ dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
             Send
           </button>
 
-          {fbSent ? (
-            <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">Sent. Thank you.</div>
-          ) : null}
+          {fbSent ? <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">Sent. Thank you.</div> : null}
         </div>
-
-       </main>
+      </main>
     </div>
   );
 }
