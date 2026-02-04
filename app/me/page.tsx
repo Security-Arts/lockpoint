@@ -15,10 +15,10 @@ type Trajectory = {
   locked_at?: string | null;
   dropped_at?: string | null;
   deadline_at?: string | null;
-  is_public: boolean; // ✅ truth
+  is_public?: boolean | null; // ✅ safer (can be null in DB)
 };
 
-type AmendmentKind = "MILESTONE" | "OUTCOME" | "NOTE"; // ✅ DROP removed (UI action)
+type AmendmentKind = "MILESTONE" | "OUTCOME" | "NOTE";
 type OutcomeResult = "COMPLETED" | "FAILED";
 
 function shortId(id: string) {
@@ -68,13 +68,10 @@ export default function MyCabinetPage() {
   const [stakePreset, setStakePreset] = useState<number | null>(null);
   const [stakeCustom, setStakeCustom] = useState<string>("");
 
-  // ✅ public toggle
-  const [makePublic, setMakePublic] = useState<boolean>(false);
-
   // Amend modal
   const [amendOpen, setAmendOpen] = useState(false);
   const [amendTrajectoryId, setAmendTrajectoryId] = useState<string | null>(null);
-  const [amendTrajectoryStatus, setAmendTrajectoryStatus] = useState<string>(""); // ✅ to restrict options
+  const [amendTrajectoryStatus, setAmendTrajectoryStatus] = useState<string>("");
   const [amendKind, setAmendKind] = useState<AmendmentKind>("MILESTONE");
   const [amendBody, setAmendBody] = useState("");
   const [amendConfirm, setAmendConfirm] = useState("");
@@ -120,7 +117,7 @@ export default function MyCabinetPage() {
 
   const amendMinLen = useMemo(() => {
     if (amendKind === "NOTE") return 3;
-    return 5; // MILESTONE | OUTCOME
+    return 5;
   }, [amendKind]);
 
   const canAmend = useMemo(() => {
@@ -134,9 +131,10 @@ export default function MyCabinetPage() {
     setToast(null);
 
     try {
-const { data: s, error: sErr } = await supabase.auth.getSession();
-if (sErr) throw sErr;
-const uid = s.session?.user?.id;
+      const { data: s, error: sErr } = await supabase.auth.getSession();
+      if (sErr) throw sErr;
+      const uid = s.session?.user?.id;
+
       if (!uid) {
         setItems([]);
         return;
@@ -193,10 +191,6 @@ const uid = s.session?.user?.id;
     setStakePreset(null);
     setStakeCustom("");
 
-    // ✅ public default from row (draft is normally false; but keep in sync)
-    setMakePublic(!!t.is_public);
-
-    // deadline -> input YYYY-MM-DD
     setDeadline(t.deadline_at ? String(t.deadline_at).slice(0, 10) : "");
   }
 
@@ -224,19 +218,18 @@ const uid = s.session?.user?.id;
     // ✅ avoid timezone-shift: store at 12:00Z for date-only input
     const deadlineISO = deadline ? `${deadline}T12:00:00.000Z` : null;
 
-const payload = {
-  title,
-  commitment,
-  status: "locked",
-  locked_at: new Date().toISOString(),
-  deadline_at: deadlineISO,
-  stake_amount: stakeAmount ?? null,
-  stake_currency: stakeAmount ? "USD" : null,
-  lock_reason: reason?.trim() ? reason.trim() : null,
-  is_public: true, 
-};
+    const payload = {
+      title,
+      commitment,
+      status: "locked",
+      locked_at: new Date().toISOString(),
+      deadline_at: deadlineISO,
+      stake_amount: stakeAmount ?? null,
+      stake_currency: stakeAmount ? "USD" : null,
+      lock_reason: reason?.trim() ? reason.trim() : null,
+      is_public: true, // ✅ LOCK => public
+    };
 
-    // atomic: only lock if still draft
     const { data: updated, error } = await supabase
       .from("trajectories")
       .update(payload)
@@ -255,6 +248,15 @@ const payload = {
       setToast("This record is not a draft anymore.");
       setLockLoading(false);
       return;
+    }
+
+    // ✅ share-loop: copy link after lock
+    try {
+      const url = `${window.location.origin}/t/${lockId}`;
+      await navigator.clipboard.writeText(url);
+      setToast("LOCKED · public link copied.");
+    } catch {
+      setToast("LOCKED.");
     }
 
     setLockOpen(false);
@@ -282,7 +284,7 @@ const payload = {
       .from("trajectories")
       .update({
         dropped_at: new Date().toISOString(),
-        is_public: false, // ✅ always private
+        is_public: false,
       })
       .eq("id", id)
       .eq("status", "draft")
@@ -308,7 +310,6 @@ const payload = {
     setToast(null);
     const contentRaw = amendBody.trim();
 
-    // ✅ restrict by current status
     const st = norm(amendTrajectoryStatus);
     if (amendKind === "OUTCOME" && st !== "locked") {
       setToast("Outcome can be recorded only while status is LOCKED.");
@@ -319,7 +320,6 @@ const payload = {
       return;
     }
 
-    // OUTCOME: update status only if currently locked (prevents failed->completed etc)
     if (amendKind === "OUTCOME") {
       const finalStatus = outcomeResult === "COMPLETED" ? "completed" : "failed";
 
@@ -343,8 +343,7 @@ const payload = {
       }
     }
 
-    const content =
-      amendKind === "OUTCOME" ? `[${outcomeResult}] ${contentRaw}` : contentRaw;
+    const content = amendKind === "OUTCOME" ? `[${outcomeResult}] ${contentRaw}` : contentRaw;
 
     const { error } = await supabase.from("trajectory_amendments").insert({
       trajectory_id: amendTrajectoryId,
