@@ -5,12 +5,18 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
+/* =========================
+   Types
+========================= */
+
+type TrajectoryStatus = "draft" | "locked" | "completed" | "failed";
+
 type Trajectory = {
   id: string;
   owner_id: string | null;
   title: string;
   commitment: string | null;
-  status: string | null; // draft | locked | completed | failed | ...
+  status: TrajectoryStatus | string | null;
   created_at: string;
   locked_at?: string | null;
   dropped_at?: string | null;
@@ -18,8 +24,10 @@ type Trajectory = {
   lock_reason?: string | null;
   stake_amount?: number | null;
   stake_currency?: string | null;
-  is_public?: boolean | null; // may be absent in some DB versions
+  is_public?: boolean | null;
 };
+
+type AmendmentKind = "MILESTONE" | "NOTE" | "OUTCOME" | "DROP";
 
 type Amendment = {
   id: string;
@@ -28,6 +36,10 @@ type Amendment = {
   content: string;
   created_at: string;
 };
+
+/* =========================
+   Helpers
+========================= */
 
 function fmtDate(iso?: string | null) {
   if (!iso) return "";
@@ -45,77 +57,64 @@ function fmtDate(iso?: string | null) {
 }
 
 function isPublicByStatus(status?: string | null) {
-  const s = String(status ?? "").toLowerCase();
+  const s = (status ?? "").toLowerCase();
   return s === "locked" || s === "completed" || s === "failed";
 }
 
+/* =========================
+   Page
+========================= */
+
 export default function TrajectoryPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const id = params?.id;
-  const router = useRouter(); 
+
   const [me, setMe] = useState<string | null>(null);
   const [t, setT] = useState<Trajectory | null>(null);
   const [amends, setAmends] = useState<Amendment[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
 
-  const statusLower = useMemo(() => String(t?.status ?? "").toLowerCase(), [t?.status]);
-  const isOwner = useMemo(() => !!t && !!me && t.owner_id === me, [t, me]);
+  /* =========================
+     Derived state
+  ========================= */
+
+  const statusLower = useMemo(() => (t?.status ?? "").toLowerCase(), [t?.status]);
+
+  const isOwner = useMemo(() => {
+    if (!t || !me) return false;
+    return t.owner_id === me;
+  }, [t, me]);
+
   const isDraft = statusLower === "draft";
-  const isDropped = !!t?.dropped_at || statusLower === "dropped";
+  const isLocked = statusLower === "locked";
+  const isFinal = statusLower === "completed" || statusLower === "failed";
+  const isDropped = !!t?.dropped_at;
 
   const isPublic = useMemo(() => {
     if (!t) return false;
-    // Prefer is_public if present and boolean
-    if (typeof (t as any).is_public === "boolean") return (t as any).is_public === true;
+    if (typeof t.is_public === "boolean") return t.is_public === true;
     return isPublicByStatus(t.status);
   }, [t]);
 
-  const shareUrl = useMemo(() => {
-    if (typeof window === "undefined") return "";
-    if (!id) return "";
-    return `${window.location.origin}/t/${id}`;
-  }, [id]);
-
-  async function shareRecord() {
-    if (!shareUrl || !t) return;
-    setToast(null);
-
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: t?.title ? `Lockpoint — ${t.title}` : "Lockpoint record",
-          text: t?.commitment
-            ? `Locked record: ${t.title}\n\n${t.commitment}`
-            : `Locked record: ${t?.title ?? "Record"}`,
-          url: shareUrl,
-        });
-        return;
-      }
-
-      await navigator.clipboard.writeText(shareUrl);
-      setToast("Link copied.");
-    } catch {
-      try {
-        await navigator.clipboard.writeText(shareUrl);
-        setToast("Link copied.");
-      } catch {
-        setToast("Could not share/copy link.");
-      }
-    }
-  }
+  /* =========================
+     Load
+  ========================= */
 
   async function load() {
     if (!id) return;
+
     setLoading(true);
     setToast(null);
 
     try {
+      // current user
       const { data: u } = await supabase.auth.getUser();
       const uid = u.user?.id ?? null;
       setMe(uid);
 
-      // Load trajectory
+      // trajectory
       const { data: traj, error: tErr } = await supabase
         .from("trajectories")
         .select(
@@ -126,25 +125,24 @@ export default function TrajectoryPage() {
 
       if (tErr) throw tErr;
 
-const status = String((traj as any)?.status ?? "").toLowerCase();
-const ownerOk = !!uid && !!(traj as any)?.owner_id && (traj as any).owner_id === uid;
+      const status = String(traj?.status ?? "").toLowerCase();
+      const ownerOk = !!uid && !!traj?.owner_id && traj.owner_id === uid;
+      const dropped = !!traj?.dropped_at || status === "dropped";
 
-// ✅ owner draft should live in /me
-if (ownerOk && status === "draft") {
-  router.replace("/me");
-  return;
-}
-
-const dropped = !!(traj as any)?.dropped_at || status === "dropped";
-
-// Privacy:
-if (status === "draft" && !ownerOk) {
-  setT(null);
-  setAmends([]);
-  setToast("Private draft. Sign in as the owner to view.");
-  return;
-}
+      // 🔁 OWNER DRAFT REDIRECT
+      if (ownerOk && status === "draft") {
+        router.replace("/me");
+        return;
       }
+
+      // 🔒 PRIVACY RULES
+      if (status === "draft" && !ownerOk) {
+        setT(null);
+        setAmends([]);
+        setToast("Private draft. Sign in as the owner to view.");
+        return;
+      }
+
       if (dropped && !ownerOk) {
         setT(null);
         setAmends([]);
@@ -153,7 +151,9 @@ if (status === "draft" && !ownerOk) {
       }
 
       const hasIsPublicCol = Object.prototype.hasOwnProperty.call(traj ?? {}, "is_public");
-      const allowedByPublic = hasIsPublicCol ? (traj as any).is_public === true : isPublicByStatus(status);
+      const allowedByPublic = hasIsPublicCol
+        ? (traj as any).is_public === true
+        : isPublicByStatus(status);
 
       if (!ownerOk && !allowedByPublic) {
         setT(null);
@@ -164,7 +164,7 @@ if (status === "draft" && !ownerOk) {
 
       setT(traj as Trajectory);
 
-      // Load amendments
+      // amendments
       const { data: a, error: aErr } = await supabase
         .from("trajectory_amendments")
         .select("id,trajectory_id,kind,content,created_at")
@@ -189,13 +189,20 @@ if (status === "draft" && !ownerOk) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  /* =========================
+     Render
+  ========================= */
+
   return (
     <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
       <main className="mx-auto w-full max-w-3xl px-6 py-14">
+        {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Record</h1>
-            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">Immutable view + amendment log.</p>
+            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+              Immutable view + amendment log.
+            </p>
           </div>
 
           <div className="flex gap-2">
@@ -214,6 +221,7 @@ if (status === "draft" && !ownerOk) {
           </div>
         </div>
 
+        {/* State */}
         {loading ? (
           <div className="mt-8 text-sm text-zinc-600 dark:text-zinc-300">Loading…</div>
         ) : !t ? (
@@ -224,101 +232,58 @@ if (status === "draft" && !ownerOk) {
           <>
             {/* MAIN CARD */}
             <div className="mt-8 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                    id: <span className="font-mono break-all">{t.id}</span>
-                    {" · "}
-                    status: <span className="uppercase">{t.status ?? "—"}</span>
-                    {isOwner ? (
-                      <>
-                        {" · "}
-                        <span className="text-zinc-500 dark:text-zinc-400">owner view</span>
-                      </>
-                    ) : null}
-                    {isDraft ? (
-                      <>
-                        {" · "}
-                        <span className="text-zinc-500 dark:text-zinc-400">draft</span>
-                      </>
-                    ) : null}
-                    {isDropped ? (
-                      <>
-                        {" · "}
-                        <span className="text-zinc-500 dark:text-zinc-400">dropped</span>
-                      </>
-                    ) : null}
-                  </div>
-
-                  <div className="mt-2 text-xl font-semibold break-words">{t.title}</div>
-
-                  {t.commitment ? (
-                    <div className="mt-3 text-sm text-zinc-700 dark:text-zinc-200">
-                      <span className="font-semibold">Commitment:</span> {t.commitment}
-                    </div>
-                  ) : null}
-
-                  <div className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
-                    created {fmtDate(t.created_at)}
-                    {t.deadline_at ? <> · deadline {fmtDate(t.deadline_at)}</> : null}
-                    {t.locked_at ? <> · locked {fmtDate(t.locked_at)}</> : null}
-                    {t.dropped_at ? <> · dropped {fmtDate(t.dropped_at)}</> : null}
-                  </div>
-
-                  {t.lock_reason ? (
-                    <div className="mt-3 text-xs text-zinc-600 dark:text-zinc-300">
-                      <span className="font-semibold">Lock reason:</span> {t.lock_reason}
-                    </div>
-                  ) : null}
-
-                  {t.stake_amount != null ? (
-                    <div className="mt-2 text-xs text-zinc-600 dark:text-zinc-300">
-                      <span className="font-semibold">Stake:</span> {t.stake_currency ?? "USD"}{" "}
-                      {t.stake_amount} <span className="text-zinc-500">(beta)</span>
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="flex flex-col items-start sm:items-end gap-2">
-                  {isPublic ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={shareRecord}
-                        className="inline-flex h-9 items-center justify-center rounded-full bg-zinc-900 px-4 text-xs font-semibold text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-                      >
-                        Share
-                      </button>
-                      <div className="text-[11px] text-zinc-500 dark:text-zinc-400">Public record.</div>
-                    </>
-                  ) : (
-                    <div className="text-[11px] text-zinc-500 dark:text-zinc-400">Private record.</div>
-                  )}
-
-                  {toast ? (
-                    <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
-                      {toast}
-                    </div>
-                  ) : null}
-                </div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                id: <span className="font-mono break-all">{t.id}</span> · status{" "}
+                <span className="uppercase">{t.status}</span>
+                {isOwner ? " · owner" : null}
+                {isDropped ? " · dropped" : null}
               </div>
 
-              {/* Guidance */}
-              {isOwner && (isDraft || isDropped) ? (
-                <div className="mt-4 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-600 dark:border-white/10 dark:bg-black/20 dark:text-zinc-300">
-                  Actions (LOCK / AMEND / OUTCOME) are available in <span className="font-mono">/me</span>.
+              <div className="mt-2 text-xl font-semibold break-words">{t.title}</div>
+
+              {t.commitment ? (
+                <div className="mt-3 text-sm text-zinc-700 dark:text-zinc-200">
+                  <span className="font-semibold">Commitment:</span> {t.commitment}
                 </div>
               ) : null}
+
+              <div className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
+                created {fmtDate(t.created_at)}
+                {t.deadline_at ? <> · deadline {fmtDate(t.deadline_at)}</> : null}
+                {t.locked_at ? <> · locked {fmtDate(t.locked_at)}</> : null}
+                {t.dropped_at ? <> · dropped {fmtDate(t.dropped_at)}</> : null}
+              </div>
+
+              {t.lock_reason ? (
+                <div className="mt-3 text-xs text-zinc-600 dark:text-zinc-300">
+                  <span className="font-semibold">Lock reason:</span> {t.lock_reason}
+                </div>
+              ) : null}
+
+              {t.stake_amount != null ? (
+                <div className="mt-2 text-xs text-zinc-600 dark:text-zinc-300">
+                  <span className="font-semibold">Stake:</span>{" "}
+                  {t.stake_currency ?? "USD"} {t.stake_amount}
+                </div>
+              ) : null}
+
+              <div className="mt-3 text-[11px] text-zinc-500 dark:text-zinc-400">
+                {isPublic ? "Public record." : "Private record."}
+              </div>
             </div>
 
-            {/* AMENDMENTS LIST */}
+            {/* AMENDMENTS */}
             <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
               <div className="text-sm font-semibold">Amendments</div>
-              <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">Immutable log (newest first).</div>
+              <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+                Immutable log (newest first).
+              </div>
 
               <div className="mt-4 space-y-2">
                 {amends.length === 0 ? (
-                  <div className="text-sm text-zinc-600 dark:text-zinc-300">No amendments yet.</div>
+                  <div className="text-sm text-zinc-600 dark:text-zinc-300">
+                    No amendments yet.
+                  </div>
                 ) : (
                   amends.map((a) => (
                     <div
@@ -326,14 +291,23 @@ if (status === "draft" && !ownerOk) {
                       className="rounded-xl border border-zinc-200 bg-white px-3 py-3 dark:border-white/10 dark:bg-black/20"
                     >
                       <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                        <span className="uppercase">{a.kind}</span> · {fmtDate(a.created_at)}
+                        <span className="uppercase">{a.kind}</span> ·{" "}
+                        {fmtDate(a.created_at)}
                       </div>
-                      <div className="mt-2 text-sm text-zinc-700 dark:text-zinc-200">{a.content}</div>
+                      <div className="mt-2 text-sm text-zinc-700 dark:text-zinc-200">
+                        {a.content}
+                      </div>
                     </div>
                   ))
                 )}
               </div>
             </div>
+
+            {toast ? (
+              <div className="mt-6 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
+                {toast}
+              </div>
+            ) : null}
           </>
         )}
       </main>
