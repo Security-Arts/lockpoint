@@ -2,17 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-
-type TrajectoryStatus = "draft" | "locked" | "completed" | "failed";
 
 type Trajectory = {
   id: string;
   owner_id: string | null;
   title: string;
   commitment: string | null;
-  status: TrajectoryStatus | string | null;
+  status: string | null; // draft | locked | completed | failed | ...
   created_at: string;
   locked_at?: string | null;
   dropped_at?: string | null;
@@ -20,10 +18,8 @@ type Trajectory = {
   lock_reason?: string | null;
   stake_amount?: number | null;
   stake_currency?: string | null;
-  is_public?: boolean | null; // ✅ include column if present
+  is_public?: boolean | null; // may be absent in some DB versions
 };
-
-type AmendmentKind = "MILESTONE" | "NOTE" | "OUTCOME" | "DROP";
 
 type Amendment = {
   id: string;
@@ -49,60 +45,29 @@ function fmtDate(iso?: string | null) {
 }
 
 function isPublicByStatus(status?: string | null) {
-  const s = (status ?? "").toLowerCase();
+  const s = String(status ?? "").toLowerCase();
   return s === "locked" || s === "completed" || s === "failed";
-}
-
-function clampInt(n: number) {
-  if (!Number.isFinite(n)) return null;
-  const x = Math.round(n);
-  return x > 0 ? x : null;
 }
 
 export default function TrajectoryPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
-
+  const router = useRouter(); 
   const [me, setMe] = useState<string | null>(null);
   const [t, setT] = useState<Trajectory | null>(null);
   const [amends, setAmends] = useState<Amendment[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
 
-  // ACTION busy flags
-  const [lockLoading, setLockLoading] = useState(false);
-  const [amendLoading, setAmendLoading] = useState(false);
-
-  // LOCK UI
-  const [lockConfirm, setLockConfirm] = useState("");
-  const [lockReason, setLockReason] = useState("");
-  const [stakePreset, setStakePreset] = useState<number | null>(null);
-  const [stakeCustom, setStakeCustom] = useState<string>("");
-  const [deadlineLocal, setDeadlineLocal] = useState<string>(""); // datetime-local
-
-  // AMEND UI
-  const [amendKind, setAmendKind] = useState<AmendmentKind>("MILESTONE");
-  const [amendText, setAmendText] = useState("");
-  const [amendConfirm, setAmendConfirm] = useState("");
-  const [outcomeResult, setOutcomeResult] = useState<"completed" | "failed">("completed");
-
-  const isOwner = useMemo(() => {
-    if (!t || !me) return false;
-    return t.owner_id === me;
-  }, [t, me]);
-
-  const statusLower = useMemo(() => (t?.status ?? "").toLowerCase(), [t?.status]);
+  const statusLower = useMemo(() => String(t?.status ?? "").toLowerCase(), [t?.status]);
+  const isOwner = useMemo(() => !!t && !!me && t.owner_id === me, [t, me]);
   const isDraft = statusLower === "draft";
-  const isLocked = statusLower === "locked";
-  const isFinal = statusLower === "completed" || statusLower === "failed";
-  const isDropped = !!t?.dropped_at; // ✅ dropped is not "failed"
+  const isDropped = !!t?.dropped_at || statusLower === "dropped";
 
-  // PUBLIC RULE (your concept):
-  // - LOCK => public
-  // Use is_public if column exists; otherwise fallback to status-based public.
   const isPublic = useMemo(() => {
     if (!t) return false;
-    if (typeof t.is_public === "boolean") return t.is_public === true;
+    // Prefer is_public if present and boolean
+    if (typeof (t as any).is_public === "boolean") return (t as any).is_public === true;
     return isPublicByStatus(t.status);
   }, [t]);
 
@@ -114,6 +79,7 @@ export default function TrajectoryPage() {
 
   async function shareRecord() {
     if (!shareUrl || !t) return;
+    setToast(null);
 
     try {
       if (navigator.share) {
@@ -139,50 +105,6 @@ export default function TrajectoryPage() {
     }
   }
 
-  const stakeAmount = useMemo(() => {
-    if (stakePreset != null) return clampInt(stakePreset);
-    const n = Number(String(stakeCustom).replace(/[^\d.]/g, ""));
-    return clampInt(n);
-  }, [stakePreset, stakeCustom]);
-
-  const lockCoreOk = useMemo(() => {
-    const titleOk = (t?.title ?? "").trim().length >= 3;
-    const commOk = (t?.commitment ?? "").trim().length >= 8;
-    return titleOk && commOk;
-  }, [t?.title, t?.commitment]);
-
-  const canLockTyped = useMemo(() => lockConfirm.trim().toUpperCase() === "LOCK", [lockConfirm]);
-
-  const lockDisabledReason = useMemo(() => {
-    if (!t) return "Loading…";
-    if (!isOwner) return "Owner only.";
-    if (!isDraft) return "Only drafts can be locked.";
-    if (!lockCoreOk) return "Title ≥ 3 chars and commitment ≥ 8 chars are required.";
-    if (!canLockTyped) return 'Type "LOCK" to proceed.';
-    return null;
-  }, [t, isOwner, isDraft, lockCoreOk, canLockTyped]);
-
-  const amendMinLen = useMemo(() => (amendKind === "NOTE" ? 3 : 5), [amendKind]);
-
-  const amendDisabledReason = useMemo(() => {
-    if (!t) return "Loading…";
-    if (!isOwner) return "Owner only.";
-    if (isDraft) return "Lock first. Amendments start after lock.";
-    if (isDropped) return "Dropped drafts are closed.";
-    if (isFinal) return "Finalized records are closed.";
-    if (amendKind === "OUTCOME" && !isLocked) return "Outcome can be recorded only from LOCKED state.";
-    if (amendConfirm.trim().toUpperCase() !== "AMEND") return 'Type "AMEND" to record.';
-    if (amendText.trim().length < amendMinLen) return `Minimum ${amendMinLen} characters.`;
-    return null;
-  }, [t, isOwner, isDraft, isDropped, isFinal, isLocked, amendKind, amendConfirm, amendText, amendMinLen]);
-
-  function deadlineToISO(dtLocal: string) {
-    if (!dtLocal) return null;
-    const d = new Date(dtLocal);
-    if (Number.isNaN(d.getTime())) return null;
-    return d.toISOString();
-  }
-
   async function load() {
     if (!id) return;
     setLoading(true);
@@ -193,6 +115,7 @@ export default function TrajectoryPage() {
       const uid = u.user?.id ?? null;
       setMe(uid);
 
+      // Load trajectory
       const { data: traj, error: tErr } = await supabase
         .from("trajectories")
         .select(
@@ -203,20 +126,24 @@ export default function TrajectoryPage() {
 
       if (tErr) throw tErr;
 
-      const status = (traj?.status ?? "").toLowerCase();
-      const ownerOk = !!uid && !!traj?.owner_id && traj.owner_id === uid;
+const status = String((traj as any)?.status ?? "").toLowerCase();
+const ownerOk = !!uid && !!(traj as any)?.owner_id && (traj as any).owner_id === uid;
 
-      const dropped = !!traj?.dropped_at || status === "dropped";
+// ✅ owner draft should live in /me
+if (ownerOk && status === "draft") {
+  router.replace("/me");
+  return;
+}
 
-      // Privacy rules:
-      // - draft: owner only
-      // - dropped: owner only
-      // - locked/final: public only if is_public=true (if column exists), otherwise fallback to status-based public
-      if (status === "draft" && !ownerOk) {
-        setT(null);
-        setAmends([]);
-        setToast("Private draft. Sign in as the owner to view.");
-        return;
+const dropped = !!(traj as any)?.dropped_at || status === "dropped";
+
+// Privacy:
+if (status === "draft" && !ownerOk) {
+  setT(null);
+  setAmends([]);
+  setToast("Private draft. Sign in as the owner to view.");
+  return;
+}
       }
       if (dropped && !ownerOk) {
         setT(null);
@@ -226,8 +153,7 @@ export default function TrajectoryPage() {
       }
 
       const hasIsPublicCol = Object.prototype.hasOwnProperty.call(traj ?? {}, "is_public");
-      const allowedByPublic =
-        hasIsPublicCol ? (traj as any).is_public === true : isPublicByStatus(status);
+      const allowedByPublic = hasIsPublicCol ? (traj as any).is_public === true : isPublicByStatus(status);
 
       if (!ownerOk && !allowedByPublic) {
         setT(null);
@@ -238,23 +164,7 @@ export default function TrajectoryPage() {
 
       setT(traj as Trajectory);
 
-      // sync lock defaults
-      setLockReason((traj as any)?.lock_reason ?? "");
-
-      if ((traj as any)?.deadline_at) {
-        const d = new Date((traj as any).deadline_at);
-        if (!Number.isNaN(d.getTime())) {
-          const yyyy = d.getFullYear();
-          const mm = String(d.getMonth() + 1).padStart(2, "0");
-          const dd = String(d.getDate()).padStart(2, "0");
-          const hh = String(d.getHours()).padStart(2, "0");
-          const mi = String(d.getMinutes()).padStart(2, "0");
-          setDeadlineLocal(`${yyyy}-${mm}-${dd}T${hh}:${mi}`);
-        }
-      } else {
-        setDeadlineLocal("");
-      }
-
+      // Load amendments
       const { data: a, error: aErr } = await supabase
         .from("trajectory_amendments")
         .select("id,trajectory_id,kind,content,created_at")
@@ -279,183 +189,13 @@ export default function TrajectoryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  async function lockNow() {
-    if (!t || !id) return;
-
-    if (lockDisabledReason) {
-      setToast(lockDisabledReason);
-      return;
-    }
-
-    setLockLoading(true);
-    setToast(null);
-
-    try {
-      const deadlineISO = deadlineToISO(deadlineLocal);
-
-      const payload: Record<string, any> = {
-        status: "locked",
-        locked_at: new Date().toISOString(),
-        lock_reason: lockReason.trim() ? lockReason.trim() : null,
-        stake_amount: stakeAmount ?? null,
-        stake_currency: stakeAmount ? "USD" : null,
-        deadline_at: deadlineISO,
-        is_public: true, // ✅ LOCK => public
-      };
-
-      // ✅ atomic: lock only if still draft
-      const { data: updated, error } = await supabase
-        .from("trajectories")
-        .update(payload)
-        .eq("id", id)
-        .eq("status", "draft")
-        .select("id,status")
-        .maybeSingle();
-
-      if (error) throw error;
-      if (!updated) {
-        setToast("This record is not a draft anymore.");
-        return;
-      }
-
-      setLockConfirm("");
-      setStakePreset(null);
-      setStakeCustom("");
-
-      // share-loop: copy link after lock
-      try {
-        await navigator.clipboard.writeText(shareUrl);
-        setToast("LOCKED · public link copied.");
-      } catch {
-        setToast("LOCKED · irreversible.");
-      }
-
-      await load();
-    } catch (e: any) {
-      console.error(e);
-      setToast(e?.message ?? "Lock failed");
-    } finally {
-      setLockLoading(false);
-    }
-  }
-
-  async function dropDraft() {
-    if (!t || !id) return;
-    if (!isOwner) return setToast("Owner only.");
-    if (!isDraft) return setToast("Only drafts can be dropped.");
-
-    setAmendLoading(true);
-    setToast(null);
-
-    try {
-      const reason = amendText.trim() || "Dropped.";
-
-      // ✅ drop = dropped_at + private; keep status draft (do not pollute FAILED)
-      const { data: dropped, error: upErr } = await supabase
-        .from("trajectories")
-        .update({
-          dropped_at: new Date().toISOString(),
-          is_public: false,
-        })
-        .eq("id", id)
-        .eq("status", "draft")
-        .select("id")
-        .maybeSingle();
-
-      if (upErr) throw upErr;
-      if (!dropped) {
-        setToast("Only drafts can be dropped.");
-        return;
-      }
-
-      // log amendment entry
-      const { error: aErr } = await supabase.from("trajectory_amendments").insert({
-        trajectory_id: id,
-        kind: "DROP",
-        content: reason,
-      });
-
-      if (aErr) throw aErr;
-
-      setToast("DROPPED");
-      setAmendText("");
-      setAmendConfirm("");
-      await load();
-    } catch (e: any) {
-      console.error(e);
-      setToast(e?.message ?? "Drop failed");
-    } finally {
-      setAmendLoading(false);
-    }
-  }
-
-  async function recordAmendment() {
-    if (!t || !id) return;
-
-    if (amendDisabledReason) {
-      setToast(amendDisabledReason);
-      return;
-    }
-
-    setAmendLoading(true);
-    setToast(null);
-
-    try {
-      const contentRaw = amendText.trim();
-
-      // OUTCOME: finalize only if currently locked
-      if (amendKind === "OUTCOME") {
-        const { data: updated, error: outErr } = await supabase
-          .from("trajectories")
-          .update({ status: outcomeResult })
-          .eq("id", id)
-          .eq("status", "locked")
-          .select("id,status")
-          .maybeSingle();
-
-        if (outErr) throw outErr;
-        if (!updated) {
-          setToast("Outcome already recorded (final). It cannot be changed.");
-          return;
-        }
-      }
-
-      const content =
-        amendKind === "OUTCOME"
-          ? `[${outcomeResult.toUpperCase()}] ${contentRaw}`
-          : contentRaw;
-
-      const { error } = await supabase.from("trajectory_amendments").insert({
-        trajectory_id: id,
-        kind: amendKind,
-        content,
-      });
-
-      if (error) throw error;
-
-      setToast(`${amendKind} recorded`);
-      setAmendText("");
-      setAmendConfirm("");
-      setAmendKind("MILESTONE");
-      setOutcomeResult("completed");
-      await load();
-    } catch (e: any) {
-      console.error(e);
-      setToast(e?.message ?? "Amendment failed");
-    } finally {
-      setAmendLoading(false);
-    }
-  }
-
   return (
     <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
       <main className="mx-auto w-full max-w-3xl px-6 py-14">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Record</h1>
-            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
-              Immutable view + amendment log.
-            </p>
+            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">Immutable view + amendment log.</p>
           </div>
 
           <div className="flex gap-2">
@@ -490,6 +230,24 @@ export default function TrajectoryPage() {
                     id: <span className="font-mono break-all">{t.id}</span>
                     {" · "}
                     status: <span className="uppercase">{t.status ?? "—"}</span>
+                    {isOwner ? (
+                      <>
+                        {" · "}
+                        <span className="text-zinc-500 dark:text-zinc-400">owner view</span>
+                      </>
+                    ) : null}
+                    {isDraft ? (
+                      <>
+                        {" · "}
+                        <span className="text-zinc-500 dark:text-zinc-400">draft</span>
+                      </>
+                    ) : null}
+                    {isDropped ? (
+                      <>
+                        {" · "}
+                        <span className="text-zinc-500 dark:text-zinc-400">dropped</span>
+                      </>
+                    ) : null}
                   </div>
 
                   <div className="mt-2 text-xl font-semibold break-words">{t.title}</div>
@@ -513,7 +271,7 @@ export default function TrajectoryPage() {
                     </div>
                   ) : null}
 
-                  {t.stake_amount ? (
+                  {t.stake_amount != null ? (
                     <div className="mt-2 text-xs text-zinc-600 dark:text-zinc-300">
                       <span className="font-semibold">Stake:</span> {t.stake_currency ?? "USD"}{" "}
                       {t.stake_amount} <span className="text-zinc-500">(beta)</span>
@@ -537,312 +295,21 @@ export default function TrajectoryPage() {
                     <div className="text-[11px] text-zinc-500 dark:text-zinc-400">Private record.</div>
                   )}
 
-                  {isOwner ? (
-                    <div className="text-[11px] text-zinc-500 dark:text-zinc-400">You are the owner.</div>
+                  {toast ? (
+                    <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
+                      {toast}
+                    </div>
                   ) : null}
                 </div>
               </div>
+
+              {/* Guidance */}
+              {isOwner && (isDraft || isDropped) ? (
+                <div className="mt-4 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-600 dark:border-white/10 dark:bg-black/20 dark:text-zinc-300">
+                  Actions (LOCK / AMEND / OUTCOME) are available in <span className="font-mono">/me</span>.
+                </div>
+              ) : null}
             </div>
-
-            {/* OWNER ACTIONS */}
-            {isOwner && !isDropped ? (
-              <>
-                {/* LOCK SECTION (draft only) */}
-                {isDraft ? (
-                  <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
-                    <div className="text-sm font-semibold">Lock</div>
-                    <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-                      Locking makes this record irreversible. You can add outcome later.
-                    </div>
-
-                    <div className="mt-4">
-                      <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                        Deadline (optional)
-                      </label>
-                      <input
-                        type="datetime-local"
-                        value={deadlineLocal}
-                        onChange={(e) => setDeadlineLocal(e.target.value)}
-                        className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                      />
-                      <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                        Local time will be converted to ISO.
-                      </div>
-                    </div>
-
-                    <div className="mt-4">
-                      <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                        Lock reason (optional)
-                      </label>
-                      <textarea
-                        value={lockReason}
-                        onChange={(e) => setLockReason(e.target.value)}
-                        className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                        rows={3}
-                        placeholder="Why is this the point of no return?"
-                      />
-                    </div>
-
-                    <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-black/20">
-                      <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">
-                        Optional stake (beta)
-                      </div>
-                      <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-                        Symbolic during beta. Not charged.
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {[10, 25, 50].map((amt) => {
-                          const active = stakePreset === amt;
-                          return (
-                            <button
-                              key={amt}
-                              type="button"
-                              onClick={() => {
-                                setStakePreset(active ? null : amt);
-                                setStakeCustom("");
-                              }}
-                              className={[
-                                "h-9 rounded-full border px-4 text-xs font-medium transition",
-                                active
-                                  ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-black"
-                                  : "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200 dark:hover:bg-white/10",
-                              ].join(" ")}
-                            >
-                              ${amt}
-                            </button>
-                          );
-                        })}
-
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-zinc-500 dark:text-zinc-400">Custom:</span>
-                          <input
-                            value={stakeCustom}
-                            onChange={(e) => {
-                              setStakeCustom(e.target.value);
-                              setStakePreset(null);
-                            }}
-                            className="h-9 w-28 rounded-full border border-zinc-200 bg-white px-3 text-xs outline-none dark:border-white/10 dark:bg-black/20"
-                            placeholder="$"
-                            inputMode="numeric"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-                        {stakeAmount ? (
-                          <>
-                            Selected stake: <span className="font-mono">${stakeAmount}</span>
-                          </>
-                        ) : (
-                          "No stake attached."
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="mt-4">
-                      <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                        Type <span className="font-mono">LOCK</span> to proceed
-                      </label>
-                      <input
-                        value={lockConfirm}
-                        onChange={(e) => setLockConfirm(e.target.value)}
-                        className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm font-mono outline-none dark:border-white/10 dark:bg-white/5"
-                        placeholder="LOCK"
-                      />
-                      {lockDisabledReason ? (
-                        <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{lockDisabledReason}</div>
-                      ) : (
-                        <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">Current time will be recorded.</div>
-                      )}
-
-                      <button
-                        type="button"
-                        disabled={!!lockDisabledReason || lockLoading}
-                        onClick={lockNow}
-                        className="mt-3 h-11 w-full rounded-full bg-zinc-900 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-                      >
-                        {lockLoading ? "Locking…" : "LOCK — irreversible"}
-                      </button>
-
-                      <div className="mt-3 flex items-center justify-between gap-3">
-                        <div className="text-xs text-zinc-500 dark:text-zinc-400">Drop discards a draft only.</div>
-                        <button
-                          type="button"
-                          onClick={() => setAmendKind("DROP")}
-                          className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-                        >
-                          DROP (draft)
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-
-                {/* AMEND SECTION */}
-                {!isDraft ? (
-                  <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
-                    <div className="text-sm font-semibold">Add amendment</div>
-                    <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-                      Amendments are immutable. They extend the record.
-                    </div>
-
-                    <div className="mt-4">
-                      <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">Type</label>
-                      <select
-                        value={amendKind}
-                        onChange={(e) => {
-                          const k = e.target.value as AmendmentKind;
-                          setAmendKind(k);
-                          if (k === "OUTCOME") setOutcomeResult("completed");
-                        }}
-                        className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                      >
-                        <option value="MILESTONE">AMEND — clarification / milestone</option>
-                        <option value="NOTE">NOTE — short note</option>
-                        <option value="OUTCOME" disabled={!isLocked}>
-                          OUTCOME — final result (locked only)
-                        </option>
-                      </select>
-                      {!isLocked ? (
-                        <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-                          Outcome is available only while status is <span className="font-mono">locked</span>.
-                        </div>
-                      ) : null}
-                    </div>
-
-                    {amendKind === "OUTCOME" && (
-                      <div className="mt-4">
-                        <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">Outcome</label>
-                        <div className="mt-2 flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setOutcomeResult("completed")}
-                            className={[
-                              "h-9 rounded-full border px-4 text-xs font-medium transition",
-                              outcomeResult === "completed"
-                                ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-black"
-                                : "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200 dark:hover:bg-white/10",
-                            ].join(" ")}
-                          >
-                            ✅ Completed
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setOutcomeResult("failed")}
-                            className={[
-                              "h-9 rounded-full border px-4 text-xs font-medium transition",
-                              outcomeResult === "failed"
-                                ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-black"
-                                : "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200 dark:hover:bg-white/10",
-                            ].join(" ")}
-                          >
-                            ❌ Failed
-                          </button>
-                        </div>
-                        <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">Outcome is permanent.</div>
-                      </div>
-                    )}
-
-                    <div className="mt-4">
-                      <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">Text</label>
-                      <textarea
-                        value={amendText}
-                        onChange={(e) => setAmendText(e.target.value)}
-                        className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                        rows={3}
-                        placeholder="Leave a factual milestone, note, or record the outcome."
-                      />
-                      {amendText.trim().length > 0 && amendText.trim().length < amendMinLen ? (
-                        <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Minimum {amendMinLen} characters</div>
-                      ) : null}
-                    </div>
-
-                    <div className="mt-4">
-                      <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                        Type <span className="font-mono">AMEND</span> to record
-                      </label>
-                      <input
-                        value={amendConfirm}
-                        onChange={(e) => setAmendConfirm(e.target.value)}
-                        className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm font-mono outline-none dark:border-white/10 dark:bg-white/5"
-                        placeholder="AMEND"
-                      />
-                      {amendDisabledReason ? (
-                        <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{amendDisabledReason}</div>
-                      ) : (
-                        <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">Current time will be recorded.</div>
-                      )}
-                    </div>
-
-                    <button
-                      type="button"
-                      disabled={!!amendDisabledReason || amendLoading}
-                      onClick={recordAmendment}
-                      className="mt-4 h-11 w-full rounded-full bg-zinc-900 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-                    >
-                      {amendLoading ? "Recording…" : "RECORD"}
-                    </button>
-                  </div>
-                ) : null}
-
-                {/* DROP CONFIRM */}
-                {isDraft && amendKind === "DROP" ? (
-                  <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
-                    <div className="text-sm font-semibold">Drop draft</div>
-                    <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">This discards a draft only. Private.</div>
-
-                    <div className="mt-4">
-                      <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">Reason (optional)</label>
-                      <textarea
-                        value={amendText}
-                        onChange={(e) => setAmendText(e.target.value)}
-                        className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                        rows={2}
-                        placeholder="Why are you dropping this?"
-                      />
-                    </div>
-
-                    <div className="mt-4">
-                      <label className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                        Type <span className="font-mono">AMEND</span> to confirm
-                      </label>
-                      <input
-                        value={amendConfirm}
-                        onChange={(e) => setAmendConfirm(e.target.value)}
-                        className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm font-mono outline-none dark:border-white/10 dark:bg-white/5"
-                        placeholder="AMEND"
-                      />
-                      {amendConfirm.trim().toUpperCase() !== "AMEND" ? (
-                        <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">Type "AMEND" to drop.</div>
-                      ) : null}
-                    </div>
-
-                    <div className="mt-4 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAmendKind("MILESTONE");
-                          setAmendText("");
-                          setAmendConfirm("");
-                        }}
-                        className="h-11 w-full rounded-full border border-zinc-200 bg-white text-sm font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        disabled={amendConfirm.trim().toUpperCase() !== "AMEND" || amendLoading}
-                        onClick={dropDraft}
-                        className="h-11 w-full rounded-full bg-zinc-900 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-                      >
-                        {amendLoading ? "Dropping…" : "DROP"}
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </>
-            ) : null}
 
             {/* AMENDMENTS LIST */}
             <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
@@ -867,12 +334,6 @@ export default function TrajectoryPage() {
                 )}
               </div>
             </div>
-
-            {toast ? (
-              <div className="mt-6 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
-                {toast}
-              </div>
-            ) : null}
           </>
         )}
       </main>
