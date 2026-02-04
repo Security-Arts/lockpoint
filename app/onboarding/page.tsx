@@ -1,8 +1,45 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import Link from "next/link";
 
 export default function OnboardingPage() {
+  const [toast, setToast] = useState<string | null>(null);
+
+  const shareUrl = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return `${window.location.origin}/onboarding`;
+  }, []);
+
+  async function share() {
+    const url = shareUrl || (typeof window !== "undefined" ? `${window.location.origin}/onboarding` : "");
+    if (!url) return;
+
+    setToast(null);
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Lockpoint",
+          text: "Lockpoint records decisions that cannot be edited or deleted.",
+          url,
+        });
+        setToast("Shared.");
+        return;
+      }
+
+      await navigator.clipboard.writeText(url);
+      setToast("Link copied.");
+    } catch {
+      try {
+        await navigator.clipboard.writeText(url);
+        setToast("Link copied.");
+      } catch {
+        setToast("Could not share/copy link.");
+      }
+    }
+  }
+
   return (
     <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
       <main className="mx-auto flex min-h-screen w-full max-w-2xl flex-col px-6 py-24">
@@ -46,35 +83,18 @@ export default function OnboardingPage() {
 
           <button
             type="button"
-            onClick={async () => {
-              const url = `${window.location.origin}/onboarding`;
-
-              try {
-                if (navigator.share) {
-                  await navigator.share({
-                    title: "Lockpoint",
-                    text: "Lockpoint records decisions that cannot be edited or deleted.",
-                    url,
-                  });
-                  return;
-                }
-
-                await navigator.clipboard.writeText(url);
-                alert("Link copied.");
-              } catch {
-                try {
-                  await navigator.clipboard.writeText(url);
-                  alert("Link copied.");
-                } catch {
-                  alert("Could not share/copy link.");
-                }
-              }
-            }}
+            onClick={share}
             className="h-12 rounded-full border border-zinc-200 bg-white px-6 text-sm font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
           >
             Share
           </button>
         </div>
+
+        {toast ? (
+          <div className="mt-6 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
+            {toast}
+          </div>
+        ) : null}
       </main>
     </div>
   );
