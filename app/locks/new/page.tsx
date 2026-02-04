@@ -1,168 +1,172 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { AuthGate } from "@/components/AuthGate";
 
+function deadlineToISO(dtLocal: string) {
+  if (!dtLocal) return null;
+  const d = new Date(dtLocal);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
 export default function NewLockPage() {
   const router = useRouter();
+
   const [title, setTitle] = useState("");
-  const [statement, setStatement] = useState("");
-  const [criteria, setCriteria] = useState("");
-  const [lockType, setLockType] = useState<"personal" | "product" | "business">(
-    "personal"
-  );
-  const [endAt, setEndAt] = useState("");
+  const [commitment, setCommitment] = useState("");
+  const [deadlineLocal, setDeadlineLocal] = useState(""); // datetime-local
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const canSubmit = useMemo(() => {
+    return title.trim().length >= 3 && commitment.trim().length >= 8 && !busy;
+  }, [title, commitment, busy]);
+
   async function onSubmit() {
+    if (busy) return;
     setError(null);
+
+    const t = title.trim();
+    const c = commitment.trim();
+
+    if (t.length < 3) return setError("Title must be at least 3 characters.");
+    if (c.length < 8) return setError("Commitment must be at least 8 characters.");
+
     setBusy(true);
 
-    const { data, error } = await supabase.rpc("create_draft_lock", {
-      p_title: title.trim(),
-      p_commitment_statement: statement.trim(),
-      p_completion_criteria: criteria.trim(),
-      p_lock_type: lockType,
-      p_end_at: new Date(endAt).toISOString(),
-    });
+    try {
+      const { data: u } = await supabase.auth.getUser();
+      const uid = u.user?.id;
 
-    setBusy(false);
+      if (!uid) {
+        // AuthGate usually handles this, but keep safe fallback
+        setError("Please sign in to create drafts.");
+        return;
+      }
 
-    if (error) {
-      setError(error.message);
-      return;
+      const deadlineISO = deadlineToISO(deadlineLocal);
+
+      const { data, error: insErr } = await supabase
+        .from("trajectories")
+        .insert({
+          owner_id: uid,
+          title: t,
+          commitment: c,
+          status: "draft",
+          deadline_at: deadlineISO,
+          is_public: false, // draft is private
+        })
+        .select("id")
+        .single();
+
+      if (insErr) throw insErr;
+
+      router.push(`/t/${data.id}`); // continue flow: lock happens there
+    } catch (e: any) {
+      setError(e?.message ?? "Create failed");
+    } finally {
+      setBusy(false);
     }
-
-    const lockId = data as string;
-    router.push(`/locks/${lockId}/seal`);
   }
 
   return (
     <AuthGate>
-      <div style={page}>
-        <h1 style={{ fontSize: 22, marginBottom: 6 }}>Create Lock</h1>
-        <p style={{ opacity: 0.75, marginTop: 0 }}>
-          No motivation. No guidance. Only commitment and outcome.
-        </p>
+      <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
+        <main className="mx-auto w-full max-w-2xl px-6 py-14">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight">Create draft</h1>
+              <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+                Draft is editable. Locking happens on the next screen and is irreversible.
+              </p>
+            </div>
 
-        <div style={grid}>
-          <Field label="Lock type">
-            <select
-              value={lockType}
-              onChange={(e) => setLockType(e.target.value as any)}
-              style={input}
-            >
-              <option value="personal">Personal</option>
-              <option value="product">Product</option>
-              <option value="business">Business</option>
-            </select>
-          </Field>
+            <div className="flex gap-2">
+              <Link
+                href="/"
+                className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-4 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+              >
+                Home
+              </Link>
+              <Link
+                href="/me"
+                className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-4 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+              >
+                My cabinet
+              </Link>
+            </div>
+          </div>
 
-          <Field label="Lock title" hint="Short, factual.">
-            <input value={title} onChange={(e) => setTitle(e.target.value)} style={input} />
-          </Field>
-
-          <Field
-            label="Commitment statement"
-            hint="One sentence. First person. No conditions."
-          >
-            <textarea
-              value={statement}
-              onChange={(e) => setStatement(e.target.value)}
-              style={{ ...input, minHeight: 90 }}
+          <div className="mt-8 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+            <div className="text-sm font-semibold">Title</div>
+            <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+              Short and factual. No hype.
+            </div>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="mt-3 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+              placeholder="e.g. Ship v1 by 2026-03-01"
             />
-          </Field>
+            {title.trim().length > 0 && title.trim().length < 3 ? (
+              <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">Minimum 3 characters.</div>
+            ) : null}
+          </div>
 
-          <Field
-            label="Completion criteria"
-            hint="Binary. Measurable. Bullet points allowed."
-          >
+          <div className="mt-3 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+            <div className="text-sm font-semibold">Commitment statement</div>
+            <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+              First person. Clear. No conditions.
+            </div>
             <textarea
-              value={criteria}
-              onChange={(e) => setCriteria(e.target.value)}
-              style={{ ...input, minHeight: 110 }}
+              value={commitment}
+              onChange={(e) => setCommitment(e.target.value)}
+              className="mt-3 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+              rows={4}
+              placeholder='Example: "I will ship a public v1 by 2026-03-01 and publish the link."'
             />
-          </Field>
+            {commitment.trim().length > 0 && commitment.trim().length < 8 ? (
+              <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">Minimum 8 characters.</div>
+            ) : null}
+          </div>
 
-          <Field
-            label="End date"
-            hint="If you do not declare completion before this moment, the Lock becomes BROKEN automatically."
-          >
+          <div className="mt-3 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+            <div className="text-sm font-semibold">Deadline (optional)</div>
+            <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+              Used for sorting + context. (Outcome rules are handled after lock.)
+            </div>
             <input
               type="datetime-local"
-              value={endAt}
-              onChange={(e) => setEndAt(e.target.value)}
-              style={input}
+              value={deadlineLocal}
+              onChange={(e) => setDeadlineLocal(e.target.value)}
+              className="mt-3 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
             />
-          </Field>
+          </div>
 
-          {error && (
-            <div style={{ ...card, borderColor: "rgba(255,120,120,0.35)" }}>
-              <div style={{ fontSize: 13, opacity: 0.9 }}>{error}</div>
+          {error ? (
+            <div className="mt-4 rounded-2xl border border-red-200 bg-white p-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+              {error}
             </div>
-          )}
+          ) : null}
 
-          <button onClick={onSubmit} disabled={busy} style={btn}>
-            {busy ? "Creating…" : "Continue"}
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={!canSubmit}
+            className="mt-5 h-12 w-full rounded-full bg-zinc-900 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+          >
+            {busy ? "Creating…" : "Continue →"}
           </button>
-        </div>
+
+          <div className="mt-3 text-center text-xs text-zinc-500 dark:text-zinc-400">
+            Next: lock + stake + lock reason + share link.
+          </div>
+        </main>
       </div>
     </AuthGate>
   );
 }
-
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div style={card}>
-      <div style={{ fontWeight: 650 }}>{label}</div>
-      {hint && <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>{hint}</div>}
-      <div style={{ marginTop: 10 }}>{children}</div>
-    </div>
-  );
-}
-
-const page: React.CSSProperties = {
-  maxWidth: 760,
-  margin: "0 auto",
-  padding: "28px 16px 48px",
-};
-
-const grid: React.CSSProperties = { display: "grid", gap: 10 };
-
-const card: React.CSSProperties = {
-  border: "1px solid rgba(255,255,255,0.12)",
-  background: "rgba(255,255,255,0.04)",
-  borderRadius: 14,
-  padding: 14,
-};
-
-const input: React.CSSProperties = {
-  width: "100%",
-  borderRadius: 10,
-  border: "1px solid rgba(255,255,255,0.14)",
-  background: "rgba(0,0,0,0.18)",
-  color: "white",
-  padding: "10px 10px",
-  outline: "none",
-  boxSizing: "border-box",
-};
-
-const btn: React.CSSProperties = {
-  padding: "12px 12px",
-  borderRadius: 12,
-  border: "1px solid rgba(255,255,255,0.16)",
-  background: "rgba(255,255,255,0.10)",
-  color: "white",
-  cursor: "pointer",
-};
