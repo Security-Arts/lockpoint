@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-import { AuthGate } from "@/components/AuthGate";
 
 type Trajectory = {
   id: string;
@@ -365,8 +364,7 @@ export default function MyCabinetPage() {
   }
 
   return (
-    <AuthGate>
-      <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
+         <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
         <main className="mx-auto w-full max-w-3xl px-6 py-16">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -861,6 +859,5 @@ export default function MyCabinetPage() {
           </div>
         )}
       </div>
-    </AuthGate>
-  );
+    );
 }
