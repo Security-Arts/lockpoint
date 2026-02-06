@@ -9,13 +9,14 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
 
+  const redirectToMe = () => `${window.location.origin}/me`;
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       const ok = !!data.session;
       setAuthed(ok);
       setReady(true);
 
-      // ✅ після логіну з головної → /me
       if (ok && window.location.pathname === "/") {
         router.replace("/me");
       }
@@ -34,42 +35,55 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     return () => sub.subscription.unsubscribe();
   }, [router]);
 
-  if (!ready) return <div style={{ padding: 24 }}>Loading…</div>;
+  async function signIn(provider: "google" | "github") {
+    await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: redirectToMe(),
+      },
+    });
+  }
+
+  if (!ready) {
+    return (
+      <div className="min-h-screen bg-zinc-50 text-zinc-900 dark:bg-black dark:text-zinc-50 grid place-items-center px-6">
+        <div className="text-sm text-zinc-600 dark:text-zinc-300">Loading…</div>
+      </div>
+    );
+  }
 
   if (!authed) {
     return (
-      <div style={{ maxWidth: 420, margin: "60px auto", padding: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700 }}>Lockpoint</h1>
-        <p style={{ opacity: 0.8, marginTop: 8 }}>
-          Sign in to create and seal Locks.
-        </p>
+      <div className="min-h-screen bg-zinc-50 text-zinc-900 dark:bg-black dark:text-zinc-50">
+        <main className="mx-auto w-full max-w-md px-6 py-16">
+          <h1 className="text-3xl font-semibold tracking-tight">Lockpoint</h1>
+          <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-300">
+            Sign in to create drafts, lock decisions, and add outcomes.
+          </p>
 
-        <div style={{ marginTop: 16, display: "grid", gap: 8 }}>
-          <button
-            onClick={() => supabase.auth.signInWithOAuth({ provider: "google" })}
-            style={btn}
-          >
-            Continue with Google
-          </button>
-          <button
-            onClick={() => supabase.auth.signInWithOAuth({ provider: "github" })}
-            style={btn}
-          >
-            Continue with GitHub
-          </button>
-        </div>
+          <div className="mt-6 grid gap-3">
+            <button
+              onClick={() => signIn("google")}
+              className="h-11 rounded-full bg-zinc-900 px-5 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+            >
+              Continue with Google
+            </button>
+
+            <button
+              onClick={() => signIn("github")}
+              className="h-11 rounded-full border border-zinc-200 bg-white px-5 text-sm font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+            >
+              Continue with GitHub
+            </button>
+
+            <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+              You’ll be redirected to <span className="font-mono">/me</span> after sign-in.
+            </div>
+          </div>
+        </main>
       </div>
     );
   }
 
   return <>{children}</>;
 }
-
-const btn: React.CSSProperties = {
-  padding: "10px 12px",
-  borderRadius: 10,
-  border: "1px solid rgba(255,255,255,0.15)",
-  background: "rgba(255,255,255,0.06)",
-  color: "white",
-  cursor: "pointer",
-};
