@@ -305,7 +305,9 @@ if (!uid) {
           <div className="flex flex-col items-end gap-2">
             <Link
               href="/me"
-              className="inline-flex h-10 items-center justify-center rounded-full bg-zinc-900 px-5 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+              className="inline-flex items-center justify-center rounded-full whitespace-nowrap
+           h-10 px-4 text-sm
+           sm:h-11 sm:px-6 sm:text-sm"
             >
               Lock a decision →
             </Link>
