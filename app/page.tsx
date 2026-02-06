@@ -228,11 +228,12 @@ export default function Home() {
     const { data: u } = await supabase.auth.getUser();
     const uid = u.user?.id;
 
-  if (!uid) {
+if (!uid) {
   setToast("Please sign in to create drafts.");
-
-  // 🔴 важливо: одразу відпускаємо кнопку
   setBusy(false);
+
+  // дає UI шанс відрендерити toast
+  await new Promise((r) => setTimeout(r, 400));
 
   await supabase.auth.signInWithOAuth({
     provider: "google",
