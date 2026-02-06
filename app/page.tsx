@@ -228,15 +228,19 @@ export default function Home() {
     const { data: u } = await supabase.auth.getUser();
     const uid = u.user?.id;
 
-    if (!uid) {
-      setToast("Please sign in to create drafts.");
-      await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: `${window.location.origin}/me` },
-      });
-      setBusy(false);
-      return;
-    }
+  if (!uid) {
+  setToast("Please sign in to create drafts.");
+
+  // 🔴 важливо: одразу відпускаємо кнопку
+  setBusy(false);
+
+  await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: `${window.location.origin}/me` },
+  });
+
+  return;
+}
 
     const { data, error } = await supabase
       .from("trajectories")
