@@ -88,7 +88,7 @@ const EXAMPLES = [
   "Launch a product and make 10 sales by 2026-04-01",
   "Reach $10,000 monthly revenue by 2026-09-01",
   "Ship one release every week for 12 weeks",
-  "Sign 3 paying B2B clients by 2026-03-31",
+  "Sign 3 paying B2B clients by 2026-04-31",
   // Life
   "Delete all social media for 12 months",
   "Visit 8 countries in 2026",
@@ -303,14 +303,21 @@ if (!uid) {
           </div>
 
           <div className="flex flex-col items-end gap-2">
-            <Link
-              href="/me"
-              className="inline-flex items-center justify-center rounded-full whitespace-nowrap
-           h-10 px-4 text-sm
-           sm:h-11 sm:px-6 sm:text-sm"
-            >
-              Lock a decision →
-            </Link>
+       <Link
+  href="/me"
+  className="
+    inline-flex shrink-0 items-center justify-center
+    rounded-full
+    whitespace-nowrap
+    bg-zinc-900 text-white
+    h-10 px-4 text-sm font-medium
+    hover:bg-zinc-800
+    dark:bg-white dark:text-black dark:hover:bg-zinc-200
+  "
+>
+  Lock a decision
+</Link>
+
             <span className="text-[11px] text-zinc-500 dark:text-zinc-400">Drafts + lock + outcomes</span>
           </div>
         </div>
