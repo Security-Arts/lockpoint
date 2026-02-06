@@ -44,6 +44,10 @@ function fmtDate(iso?: string | null) {
 function norm(s?: string | null) {
   return String(s ?? "").toLowerCase();
 }
+async function signOut() {
+  await supabase.auth.signOut();
+  window.location.href = "/";
+}
 
 export default function MyCabinetPage() {
   const [items, setItems] = useState<Trajectory[]>([]);
@@ -366,21 +370,30 @@ export default function MyCabinetPage() {
   return (
          <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
         <main className="mx-auto w-full max-w-3xl px-6 py-16">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight">My cabinet</h1>
-              <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
-                Drafts + locked records. Public registry stays on the home page.
-              </p>
-            </div>
+       <div className="flex items-start justify-between gap-3">
+  <div>
+    <h1 className="text-2xl font-semibold tracking-tight">My cabinet</h1>
+    <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+      Drafts + locked records. Public registry stays on the home page.
+    </p>
+  </div>
 
-            <Link
-              href="/"
-              className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-4 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-            >
-              ← Home
-            </Link>
-          </div>
+  <div className="flex gap-2">
+    <Link
+      href="/"
+      className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-4 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+    >
+      ← Home
+    </Link>
+
+    <button
+      onClick={signOut}
+      className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-4 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+    >
+      Sign out
+    </button>
+  </div>
+</div>
 
           {/* controls */}
           <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
