@@ -126,10 +126,11 @@ export default function Home() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
 
-  // Feedback (mailto)
+  // Feedback (Resend via /api/feedback)
   const [fbEmail, setFbEmail] = useState("");
   const [fbMsg, setFbMsg] = useState("");
-  const [fbSent, setFbSent] = useState(false);
+  const [fbBusy, setFbBusy] = useState(false);
+  const [fbToast, setFbToast] = useState<string | null>(null);
 
   function resetPaging() {
     setPage(1);
@@ -228,20 +229,20 @@ export default function Home() {
     const { data: u } = await supabase.auth.getUser();
     const uid = u.user?.id;
 
-if (!uid) {
-  setToast("Please sign in to create drafts.");
-  setBusy(false);
+    if (!uid) {
+      setToast("Please sign in to create drafts.");
+      setBusy(false);
 
-  // дає UI шанс відрендерити toast
-  await new Promise((r) => setTimeout(r, 400));
+      // дає UI шанс відрендерити toast
+      await new Promise((r) => setTimeout(r, 400));
 
-  await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: { redirectTo: `${window.location.origin}/me` },
-  });
+      await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: `${window.location.origin}/me` },
+      });
 
-  return;
-}
+      return;
+    }
 
     const { data, error } = await supabase
       .from("trajectories")
@@ -268,16 +269,44 @@ if (!uid) {
     setBusy(false);
   }
 
-  function sendFeedbackMailto() {
-    setFbSent(false);
-    const subject = encodeURIComponent("Lockpoint feedback");
-    const body = encodeURIComponent(`From: ${fbEmail || "(not provided)"}\n\nMessage:\n${fbMsg || ""}`);
+  async function sendFeedback() {
+    if (fbBusy) return;
+    setFbBusy(true);
+    setFbToast(null);
 
-    window.location.href = "mailto:a.lutsyna@gmail.com?subject=" + subject + "&body=" + body;
+    const message = fbMsg.trim();
+    const email = fbEmail.trim();
 
-    setFbEmail("");
-    setFbMsg("");
-    setFbSent(true);
+    if (!message) {
+      setFbToast("Please write a message.");
+      setFbBusy(false);
+      return;
+    }
+
+    try {
+      const r = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email || null,
+          message,
+          page: "/",
+        }),
+      });
+
+      if (!r.ok) {
+        const j = await r.json().catch(() => null);
+        throw new Error(j?.error || "Send failed");
+      }
+
+      setFbToast("Sent. Thank you.");
+      setFbEmail("");
+      setFbMsg("");
+    } catch (e: any) {
+      setFbToast(e?.message ? `Failed: ${e.message}` : "Failed to send.");
+    } finally {
+      setFbBusy(false);
+    }
   }
 
   return (
@@ -303,9 +332,9 @@ if (!uid) {
           </div>
 
           <div className="flex flex-col items-end gap-2">
-       <Link
-  href="/me"
-  className="
+            <Link
+              href="/me"
+              className="
     inline-flex shrink-0 items-center justify-center
     rounded-full
     whitespace-nowrap
@@ -314,9 +343,9 @@ if (!uid) {
     hover:bg-zinc-800
     dark:bg-white dark:text-black dark:hover:bg-zinc-200
   "
->
-  Lock a decision
-</Link>
+            >
+              Lock a decision
+            </Link>
 
             <span className="text-[11px] text-zinc-500 dark:text-zinc-400">Drafts + lock + outcomes</span>
           </div>
@@ -447,155 +476,3 @@ if (!uid) {
                 onChange={(e) => setSortMode(e.target.value as SortMode)}
                 className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
               >
-                <option value="newest">Newest</option>
-                <option value="recently_locked">Recently locked</option>
-                <option value="deadline">Deadline first</option>
-              </select>
-            </div>
-
-            <div className="flex items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/5">
-              <div>
-                <div className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">Stake</div>
-                <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                  Show only records with stake
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setWithStakeOnly((v) => !v)}
-                className={`h-8 w-14 rounded-full border px-1 transition ${
-                  withStakeOnly
-                    ? "border-zinc-900 bg-zinc-900 dark:border-white dark:bg-white"
-                    : "border-zinc-200 bg-zinc-50 dark:border-white/10 dark:bg-black/20"
-                }`}
-                aria-pressed={withStakeOnly}
-              >
-                <span
-                  className={`block h-6 w-6 rounded-full bg-white transition dark:bg-black ${
-                    withStakeOnly ? "translate-x-6" : "translate-x-0"
-                  }`}
-                />
-              </button>
-            </div>
-          </div>
-
-          {/* List */}
-          <div className="mt-5 space-y-2">
-            {loadingList ? (
-              <div className="text-sm text-zinc-600 dark:text-zinc-300">Loading…</div>
-            ) : items.length === 0 ? (
-              <div className="text-sm text-zinc-600 dark:text-zinc-300">No records found.</div>
-            ) : (
-              items.map((t) => (
-                <Link
-                  key={t.id}
-                  href={`/t/${t.id}`}
-                  className="block rounded-xl border border-zinc-200 bg-white px-3 py-3 hover:bg-zinc-50 dark:border-white/10 dark:bg-black/20 dark:hover:bg-white/5"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium truncate">{t.title}</div>
-                      <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-                        <span className="font-mono">{shortId(t.id)}</span>
-                        {t.deadline_at ? (
-                          <>
-                            {" · "}
-                            <span className="text-zinc-500 dark:text-zinc-400">
-                              deadline {fmtDate(t.deadline_at)}
-                            </span>
-                          </>
-                        ) : null}
-                        {t.locked_at ? (
-                          <>
-                            {" · "}
-                            <span className="text-zinc-500 dark:text-zinc-400">
-                              locked {fmtDate(t.locked_at)}
-                            </span>
-                          </>
-                        ) : null}
-                        {t.stake_amount != null ? (
-                          <>
-                            {" · "}
-                            <span className="text-zinc-500 dark:text-zinc-400">
-                              stake {t.stake_amount}
-                              {t.stake_currency ? ` ${t.stake_currency}` : ""}
-                            </span>
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div className="shrink-0">{statusPill(t.status)}</div>
-                  </div>
-                </Link>
-              ))
-            )}
-          </div>
-
-          {/* Pagination */}
-          <div className="mt-5 flex items-center justify-between">
-            <button
-              type="button"
-              disabled={page <= 1 || loadingList}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="h-10 rounded-full border border-zinc-200 bg-white px-4 text-sm font-medium hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-zinc-400/40 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-            >
-              ← Prev
-            </button>
-
-            <div className="text-xs text-zinc-500 dark:text-zinc-400">Page {page}</div>
-
-            <button
-              type="button"
-              disabled={!hasMore || loadingList}
-              onClick={() => setPage((p) => p + 1)}
-              className="h-10 rounded-full border border-zinc-200 bg-white px-4 text-sm font-medium hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-zinc-400/40 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-            >
-              Next →
-            </button>
-          </div>
-        </div>
-
-        {/* Feedback */}
-        <div className="mt-10 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
-          <div className="text-sm font-semibold">Feedback</div>
-          <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-            Tell me what broke or what you want next.
-          </div>
-
-          <div className="mt-4">
-            <label className="text-xs font-medium">Email</label>
-            <input
-              value={fbEmail}
-              onChange={(e) => setFbEmail(e.target.value)}
-              className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-              placeholder="you@email.com"
-            />
-          </div>
-
-          <div className="mt-4">
-            <label className="text-xs font-medium">Message</label>
-            <textarea
-              value={fbMsg}
-              onChange={(e) => setFbMsg(e.target.value)}
-              className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-              rows={3}
-              placeholder="Feedback, ideas, collaboration - anything you want to share."
-            />
-          </div>
-
-          <button
-            type="button"
-            disabled={!fbMsg.trim()}
-            onClick={sendFeedbackMailto}
-            className="mt-4 h-11 rounded-full border border-zinc-200 bg-white px-5 text-sm font-medium hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-          >
-            Send
-          </button>
-
-          {fbSent ? <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">Sent. Thank you.</div> : null}
-        </div>
-      </main>
-    </div>
-  );
-}
