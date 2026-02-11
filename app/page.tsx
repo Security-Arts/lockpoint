@@ -84,12 +84,10 @@ function getStartOfTodayISO() {
 }
 
 const EXAMPLES = [
-  // Business
   "Launch a product and make 10 sales by 2026-04-01",
   "Reach $10,000 monthly revenue by 2026-09-01",
   "Ship one release every week for 12 weeks",
   "Sign 3 paying B2B clients by 2026-04-31",
-  // Life
   "Delete all social media for 12 months",
   "Visit 8 countries in 2026",
   "Run a marathon before 2026-10-01",
@@ -139,22 +137,17 @@ export default function Home() {
   async function loadRegistry(p: number) {
     setLoadingList(true);
 
-    // Public registry:
-    // - only is_public=true
-    // - never show drafts
     let q = supabase
       .from("trajectories")
       .select("id,title,status,created_at,locked_at,deadline_at,stake_amount,stake_currency")
       .eq("is_public", true);
 
-    // Status filter (DB supports: draft, locked, completed, failed)
     if (statusFilter === "all") {
       q = q.in("status", ["locked", "completed", "failed"]);
     } else {
       q = q.eq("status", statusFilter);
     }
 
-    // Deadline filter
     if (deadlineFilter === "this_week") {
       q = q.gte("deadline_at", getStartOfTodayISO()).lte("deadline_at", getISODatePlusDays(7));
     } else if (deadlineFilter === "this_month") {
@@ -163,27 +156,22 @@ export default function Home() {
       q = q.lt("deadline_at", getStartOfTodayISO());
     }
 
-    // Stake filter
     if (withStakeOnly) {
       q = q.not("stake_amount", "is", null);
     }
 
-    // Sort
     if (sortMode === "deadline") {
       q = q.order("deadline_at", { ascending: true, nullsFirst: false });
     } else if (sortMode === "recently_locked") {
       q = q.order("locked_at", { ascending: false, nullsFirst: false });
     } else {
-      // newest
       q = q.order("locked_at", { ascending: false, nullsFirst: false }).order("created_at", {
         ascending: false,
       });
     }
 
-    // Pagination:
-    // Supabase range(from,to) is inclusive, so we fetch PAGE_SIZE+1 rows.
     const from = (p - 1) * PAGE_SIZE;
-    const to = from + PAGE_SIZE; // PAGE_SIZE + 1 rows
+    const to = from + PAGE_SIZE; // inclusive => PAGE_SIZE+1 rows
     const { data, error } = await q.range(from, to);
 
     if (error) {
@@ -200,13 +188,11 @@ export default function Home() {
     setLoadingList(false);
   }
 
-  // Reset paging when filters change
   useEffect(() => {
     resetPaging();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, deadlineFilter, withStakeOnly, sortMode]);
 
-  // Load registry
   useEffect(() => {
     loadRegistry(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -233,7 +219,6 @@ export default function Home() {
       setToast("Please sign in to create drafts.");
       setBusy(false);
 
-      // дає UI шанс відрендерити toast
       await new Promise((r) => setTimeout(r, 400));
 
       await supabase.auth.signInWithOAuth({
@@ -251,7 +236,7 @@ export default function Home() {
         title,
         commitment,
         status: "draft",
-        is_public: false, // ✅ default private
+        is_public: false,
       })
       .select("id")
       .single();
@@ -334,19 +319,10 @@ export default function Home() {
           <div className="flex flex-col items-end gap-2">
             <Link
               href="/me"
-              className="
-    inline-flex shrink-0 items-center justify-center
-    rounded-full
-    whitespace-nowrap
-    bg-zinc-900 text-white
-    h-10 px-4 text-sm font-medium
-    hover:bg-zinc-800
-    dark:bg-white dark:text-black dark:hover:bg-zinc-200
-  "
+              className="inline-flex shrink-0 items-center justify-center rounded-full whitespace-nowrap bg-zinc-900 text-white h-10 px-4 text-sm font-medium hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
             >
               Lock a decision
             </Link>
-
             <span className="text-[11px] text-zinc-500 dark:text-zinc-400">Drafts + lock + outcomes</span>
           </div>
         </div>
@@ -379,9 +355,9 @@ export default function Home() {
               className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
               placeholder="e.g. No social media for 12 months"
             />
-            {draftTitle.trim().length > 0 && draftTitle.trim().length < 3 && (
+            {draftTitle.trim().length > 0 && draftTitle.trim().length < 3 ? (
               <div className="mt-1 text-xs text-zinc-500">Minimum 3 characters</div>
-            )}
+            ) : null}
           </div>
 
           <div className="mt-4">
@@ -393,9 +369,9 @@ export default function Home() {
               rows={3}
               placeholder='Example: "I will delete all social media by 2026-02-01 and not return for 12 months."'
             />
-            {draftCommitment.trim().length > 0 && draftCommitment.trim().length < 8 && (
+            {draftCommitment.trim().length > 0 && draftCommitment.trim().length < 8 ? (
               <div className="mt-1 text-xs text-zinc-500">Minimum 8 characters</div>
-            )}
+            ) : null}
           </div>
 
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -408,11 +384,11 @@ export default function Home() {
               {busy ? "Creating…" : "Create draft"}
             </button>
 
-            {toast && (
+            {toast ? (
               <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
                 {toast}
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -425,6 +401,7 @@ export default function Home() {
                 Public records only (is_public = true).
               </div>
             </div>
+
             <Link
               href="/me"
               className="text-xs text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
@@ -476,3 +453,155 @@ export default function Home() {
                 onChange={(e) => setSortMode(e.target.value as SortMode)}
                 className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
               >
+                <option value="newest">Newest</option>
+                <option value="recently_locked">Recently locked</option>
+                <option value="deadline">Deadline first</option>
+              </select>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/5">
+              <div>
+                <div className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">Stake</div>
+                <div className="text-[11px] text-zinc-500 dark:text-zinc-400">Show only records with stake</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWithStakeOnly((v) => !v)}
+                className={`h-8 w-14 rounded-full border px-1 transition ${
+                  withStakeOnly
+                    ? "border-zinc-900 bg-zinc-900 dark:border-white dark:bg-white"
+                    : "border-zinc-200 bg-zinc-50 dark:border-white/10 dark:bg-black/20"
+                }`}
+                aria-pressed={withStakeOnly}
+              >
+                <span
+                  className={`block h-6 w-6 rounded-full bg-white transition dark:bg-black ${
+                    withStakeOnly ? "translate-x-6" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* List */}
+          <div className="mt-5 space-y-2">
+            {loadingList ? (
+              <div className="text-sm text-zinc-600 dark:text-zinc-300">Loading…</div>
+            ) : items.length === 0 ? (
+              <div className="text-sm text-zinc-600 dark:text-zinc-300">No records found.</div>
+            ) : (
+              items.map((t) => (
+                <Link
+                  key={t.id}
+                  href={`/t/${t.id}`}
+                  className="block rounded-xl border border-zinc-200 bg-white px-3 py-3 hover:bg-zinc-50 dark:border-white/10 dark:bg-black/20 dark:hover:bg-white/5"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">{t.title}</div>
+                      <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+                        <span className="font-mono">{shortId(t.id)}</span>
+                        {t.deadline_at ? (
+                          <>
+                            {" · "}
+                            <span className="text-zinc-500 dark:text-zinc-400">
+                              deadline {fmtDate(t.deadline_at)}
+                            </span>
+                          </>
+                        ) : null}
+                        {t.locked_at ? (
+                          <>
+                            {" · "}
+                            <span className="text-zinc-500 dark:text-zinc-400">
+                              locked {fmtDate(t.locked_at)}
+                            </span>
+                          </>
+                        ) : null}
+                        {t.stake_amount != null ? (
+                          <>
+                            {" · "}
+                            <span className="text-zinc-500 dark:text-zinc-400">
+                              stake {t.stake_amount}
+                              {t.stake_currency ? ` ${t.stake_currency}` : ""}
+                            </span>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="shrink-0">{statusPill(t.status)}</div>
+                  </div>
+                </Link>
+              ))
+            )}
+          </div>
+
+          {/* Pagination */}
+          <div className="mt-5 flex items-center justify-between">
+            <button
+              type="button"
+              disabled={page <= 1 || loadingList}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="h-10 rounded-full border border-zinc-200 bg-white px-4 text-sm font-medium hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-zinc-400/40 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+            >
+              ← Prev
+            </button>
+
+            <div className="text-xs text-zinc-500 dark:text-zinc-400">Page {page}</div>
+
+            <button
+              type="button"
+              disabled={!hasMore || loadingList}
+              onClick={() => setPage((p) => p + 1)}
+              className="h-10 rounded-full border border-zinc-200 bg-white px-4 text-sm font-medium hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-zinc-400/40 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+            >
+              Next →
+            </button>
+          </div>
+        </div>
+
+        {/* Feedback */}
+        <div className="mt-10 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+          <div className="text-sm font-semibold">Feedback</div>
+          <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+            Tell me what broke or what you want next.
+          </div>
+
+          <div className="mt-4">
+            <label className="text-xs font-medium">Email (optional)</label>
+            <input
+              value={fbEmail}
+              onChange={(e) => setFbEmail(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+              placeholder="you@email.com"
+            />
+          </div>
+
+          <div className="mt-4">
+            <label className="text-xs font-medium">Message</label>
+            <textarea
+              value={fbMsg}
+              onChange={(e) => setFbMsg(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+              rows={3}
+              placeholder="Feedback, ideas, collaboration - anything you want to share."
+            />
+          </div>
+
+          <button
+            type="button"
+            disabled={fbBusy || !fbMsg.trim()}
+            onClick={sendFeedback}
+            className="mt-4 h-11 rounded-full border border-zinc-200 bg-white px-5 text-sm font-medium hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+          >
+            {fbBusy ? "Sending…" : "Send"}
+          </button>
+
+          {fbToast ? (
+            <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">{fbToast}</div>
+          ) : null}
+        </div>
+      </main>
+    </div>
+  );
+}
