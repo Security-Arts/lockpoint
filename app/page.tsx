@@ -35,50 +35,6 @@ function fmtDate(iso?: string | null) {
   }
 }
 
-function daysDiffFromNow(iso?: string | null) {
-  if (!iso) return null;
-  const t = new Date(iso).getTime();
-  if (!Number.isFinite(t)) return null;
-  const now = Date.now();
-  const diffMs = t - now;
-  return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-}
-
-function dueBadge(deadlineIso?: string | null) {
-  const d = daysDiffFromNow(deadlineIso);
-  if (d == null) return null;
-
-  if (d < 0) {
-    return (
-      <span className="ml-2 inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
-        OVERDUE {Math.abs(d)}d
-      </span>
-    );
-  }
-
-  if (d <= 3) {
-    return (
-      <span className="ml-2 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-        DUE SOON {d}d
-      </span>
-    );
-  }
-
-  if (d <= 7) {
-    return (
-      <span className="ml-2 inline-flex items-center rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
-        {d}d left
-      </span>
-    );
-  }
-
-  return (
-    <span className="ml-2 inline-flex items-center rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-zinc-500 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300">
-      {d}d left
-    </span>
-  );
-}
-
 function statusPill(statusRaw?: string | null) {
   const s = String(statusRaw ?? "").toLowerCase();
 
@@ -127,22 +83,37 @@ function getStartOfTodayISO() {
   return d.toISOString();
 }
 
-async function shareLink(url: string) {
-  try {
-    // native share (mobile)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const nav: any = navigator;
-    if (nav?.share) {
-      await nav.share({ url });
-      return { ok: true as const, mode: "native" as const };
-    }
-  } catch {}
-  try {
-    await navigator.clipboard.writeText(url);
-    return { ok: true as const, mode: "clipboard" as const };
-  } catch {
-    return { ok: false as const, mode: "none" as const };
+// --- Due indicators (C) ---
+function daysUntil(iso?: string | null) {
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return null;
+  const now = Date.now();
+  const diff = t - now;
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
+function duePill(deadlineIso?: string | null) {
+  const d = daysUntil(deadlineIso);
+  if (d == null) return null;
+
+  if (d < 0) {
+    return (
+      <span className="ml-2 inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+        OVERDUE {Math.abs(d)}d
+      </span>
+    );
   }
+
+  if (d <= 7) {
+    return (
+      <span className="ml-2 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+        DUE SOON {d}d
+      </span>
+    );
+  }
+
+  return null;
 }
 
 const EXAMPLES = [
@@ -157,22 +128,18 @@ const EXAMPLES = [
   "Read 50 books in 2026",
 ];
 
-type RegistryStats = {
-  locked: number;
-  completed: number;
-  failed: number;
-  withStake: number;
-  deadlines7d: number;
-  totalStake: number; // raw sum (no currency conversion)
-  lastLockAt?: string | null;
+type Counters = {
+  locked_count: number;
+  completed_count: number;
+  failed_count: number;
+  stakes_sum: number;
+  due_soon_count: number; // deadline within 7 days for locked
+  overdue_count: number;  // deadline < today for locked
 };
 
 export default function Home() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-
-  // Auth
-  const [uid, setUid] = useState<string | null>(null);
 
   // Draft create
   const [draftTitle, setDraftTitle] = useState("");
@@ -188,10 +155,6 @@ export default function Home() {
   const [items, setItems] = useState<Trajectory[]>([]);
   const [loadingList, setLoadingList] = useState(true);
 
-  // Stats
-  const [stats, setStats] = useState<RegistryStats | null>(null);
-  const [loadingStats, setLoadingStats] = useState(true);
-
   // Filters
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("locked");
   const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>("any");
@@ -203,152 +166,39 @@ export default function Home() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
 
-  // Feedback (API)
+  // Feedback (D) via API
   const [fbEmail, setFbEmail] = useState("");
   const [fbMsg, setFbMsg] = useState("");
-  const [fbCategory, setFbCategory] = useState<"Bug" | "Idea" | "UX" | "Account" | "Other">("Other");
-  const [fbSending, setFbSending] = useState(false);
+  const [fbBusy, setFbBusy] = useState(false);
   const [fbSent, setFbSent] = useState(false);
-  const [fbErr, setFbErr] = useState<string | null>(null);
+
+  // Counters (B)
+  const [counters, setCounters] = useState<Counters | null>(null);
+  const [loadingCounters, setLoadingCounters] = useState(true);
 
   function resetPaging() {
     setPage(1);
   }
 
-  // Track auth state
-  useEffect(() => {
-    let mounted = true;
-
-    supabase.auth.getUser().then(({ data }) => {
-      if (!mounted) return;
-      setUid(data.user?.id ?? null);
-    });
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUid(session?.user?.id ?? null);
-    });
-
-    return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
-    };
-  }, []);
-
-  async function signIn() {
-    setToast(null);
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: `${window.location.origin}/me` },
-    });
-  }
-
-  async function signOut() {
-    setToast(null);
-    await supabase.auth.signOut();
-    setToast("Signed out.");
-  }
-
-  async function loadStats() {
-    setLoadingStats(true);
-
-    try {
-      const base = supabase.from("trajectories").select("id", { head: true, count: "exact" }).eq("is_public", true);
-
-      // locked count
-      const lockedP = supabase
-        .from("trajectories")
-        .select("id", { head: true, count: "exact" })
-        .eq("is_public", true)
-        .eq("status", "locked");
-
-      const completedP = supabase
-        .from("trajectories")
-        .select("id", { head: true, count: "exact" })
-        .eq("is_public", true)
-        .eq("status", "completed");
-
-      const failedP = supabase
-        .from("trajectories")
-        .select("id", { head: true, count: "exact" })
-        .eq("is_public", true)
-        .eq("status", "failed");
-
-      const withStakeP = supabase
-        .from("trajectories")
-        .select("id", { head: true, count: "exact" })
-        .eq("is_public", true)
-        .in("status", ["locked", "completed", "failed"])
-        .not("stake_amount", "is", null);
-
-      const deadlines7dP = supabase
-        .from("trajectories")
-        .select("id", { head: true, count: "exact" })
-        .eq("is_public", true)
-        .eq("status", "locked")
-        .gte("deadline_at", getStartOfTodayISO())
-        .lte("deadline_at", getISODatePlusDays(7));
-
-      const lastLockP = supabase
-        .from("trajectories")
-        .select("locked_at")
-        .eq("is_public", true)
-        .in("status", ["locked", "completed", "failed"])
-        .order("locked_at", { ascending: false, nullsFirst: false })
-        .limit(1);
-
-      // total stake (MVP): client-side sum of visible stake amounts
-      const stakeRowsP = supabase
-        .from("trajectories")
-        .select("stake_amount")
-        .eq("is_public", true)
-        .in("status", ["locked", "completed", "failed"])
-        .not("stake_amount", "is", null)
-        .limit(1000);
-
-      const [
-        lockedR,
-        completedR,
-        failedR,
-        withStakeR,
-        deadlines7dR,
-        lastLockR,
-        stakeRowsR,
-      ] = await Promise.all([lockedP, completedP, failedP, withStakeP, deadlines7dP, lastLockP, stakeRowsP]);
-
-      const totalStake =
-        (stakeRowsR.data ?? []).reduce((acc, r) => acc + (Number((r as any).stake_amount) || 0), 0);
-
-      setStats({
-        locked: lockedR.count ?? 0,
-        completed: completedR.count ?? 0,
-        failed: failedR.count ?? 0,
-        withStake: withStakeR.count ?? 0,
-        deadlines7d: deadlines7dR.count ?? 0,
-        totalStake,
-        lastLockAt: (lastLockR.data?.[0] as any)?.locked_at ?? null,
-      });
-    } catch (e) {
-      console.error(e);
-      setStats(null);
-    } finally {
-      setLoadingStats(false);
-    }
-  }
-
   async function loadRegistry(p: number) {
     setLoadingList(true);
 
+    // Public registry:
+    // - only is_public=true
+    // - never show drafts
     let q = supabase
       .from("trajectories")
       .select("id,title,status,created_at,locked_at,deadline_at,stake_amount,stake_currency")
       .eq("is_public", true);
 
+    // Status filter (DB supports: draft, locked, completed, failed)
     if (statusFilter === "all") {
       q = q.in("status", ["locked", "completed", "failed"]);
     } else {
       q = q.eq("status", statusFilter);
     }
 
+    // Deadline filter
     if (deadlineFilter === "this_week") {
       q = q.gte("deadline_at", getStartOfTodayISO()).lte("deadline_at", getISODatePlusDays(7));
     } else if (deadlineFilter === "this_month") {
@@ -357,22 +207,27 @@ export default function Home() {
       q = q.lt("deadline_at", getStartOfTodayISO());
     }
 
+    // Stake filter
     if (withStakeOnly) {
       q = q.not("stake_amount", "is", null);
     }
 
+    // Sort
     if (sortMode === "deadline") {
       q = q.order("deadline_at", { ascending: true, nullsFirst: false });
     } else if (sortMode === "recently_locked") {
       q = q.order("locked_at", { ascending: false, nullsFirst: false });
     } else {
+      // newest
       q = q.order("locked_at", { ascending: false, nullsFirst: false }).order("created_at", {
         ascending: false,
       });
     }
 
+    // Pagination:
+    // Supabase range(from,to) is inclusive, so we fetch PAGE_SIZE+1 rows.
     const from = (p - 1) * PAGE_SIZE;
-    const to = from + PAGE_SIZE;
+    const to = from + PAGE_SIZE; // PAGE_SIZE + 1 rows
     const { data, error } = await q.range(from, to);
 
     if (error) {
@@ -389,6 +244,83 @@ export default function Home() {
     setLoadingList(false);
   }
 
+  // Counters loader (B): safe, simple, minimal queries
+  async function loadCounters() {
+    setLoadingCounters(true);
+
+    try {
+      const today = getStartOfTodayISO();
+      const next7 = getISODatePlusDays(7);
+
+      const [
+        lockedR,
+        completedR,
+        failedR,
+        dueSoonR,
+        overdueR,
+        stakeRowsR,
+      ] = await Promise.all([
+        supabase
+          .from("trajectories")
+          .select("id", { head: true, count: "exact" })
+          .eq("is_public", true)
+          .eq("status", "locked"),
+
+        supabase
+          .from("trajectories")
+          .select("id", { head: true, count: "exact" })
+          .eq("is_public", true)
+          .eq("status", "completed"),
+
+        supabase
+          .from("trajectories")
+          .select("id", { head: true, count: "exact" })
+          .eq("is_public", true)
+          .eq("status", "failed"),
+
+        supabase
+          .from("trajectories")
+          .select("id", { head: true, count: "exact" })
+          .eq("is_public", true)
+          .eq("status", "locked")
+          .gte("deadline_at", today)
+          .lte("deadline_at", next7),
+
+        supabase
+          .from("trajectories")
+          .select("id", { head: true, count: "exact" })
+          .eq("is_public", true)
+          .eq("status", "locked")
+          .lt("deadline_at", today),
+
+        // MVP sum: pull stake_amount rows and sum client-side
+        supabase
+          .from("trajectories")
+          .select("stake_amount")
+          .eq("is_public", true)
+          .not("stake_amount", "is", null)
+          .limit(1000),
+      ]);
+
+      const stakes_sum =
+        (stakeRowsR.data ?? []).reduce((acc, r: any) => acc + (Number(r.stake_amount) || 0), 0);
+
+      setCounters({
+        locked_count: lockedR.count ?? 0,
+        completed_count: completedR.count ?? 0,
+        failed_count: failedR.count ?? 0,
+        stakes_sum,
+        due_soon_count: dueSoonR.count ?? 0,
+        overdue_count: overdueR.count ?? 0,
+      });
+    } catch (e) {
+      console.error(e);
+      setCounters(null);
+    } finally {
+      setLoadingCounters(false);
+    }
+  }
+
   // Reset paging when filters change
   useEffect(() => {
     resetPaging();
@@ -401,9 +333,9 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, statusFilter, deadlineFilter, withStakeOnly, sortMode]);
 
-  // Load stats initially + when public filter set changes (optional: keep simple)
+  // Load counters once on mount + you can refresh manually
   useEffect(() => {
-    loadStats();
+    loadCounters();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -422,21 +354,27 @@ export default function Home() {
     }
 
     const { data: u } = await supabase.auth.getUser();
-    const userId = u.user?.id;
+    const uid = u.user?.id;
 
-    if (!userId) {
+    if (!uid) {
       setToast("Please sign in to create drafts.");
       setBusy(false);
 
-      await new Promise((r) => setTimeout(r, 300));
-      await signIn();
+      // дає UI шанс відрендерити toast
+      await new Promise((r) => setTimeout(r, 400));
+
+      await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: `${window.location.origin}/me` },
+      });
+
       return;
     }
 
     const { data, error } = await supabase
       .from("trajectories")
       .insert({
-        owner_id: userId,
+        owner_id: uid,
         title,
         commitment,
         status: "draft",
@@ -458,54 +396,40 @@ export default function Home() {
     setBusy(false);
   }
 
-  async function submitFeedback() {
-    if (fbSending) return;
-    setFbErr(null);
+  // Feedback via API (D)
+  async function sendFeedback() {
+    if (fbBusy) return;
+    setFbBusy(true);
     setFbSent(false);
+    setToast(null);
 
-    const email = fbEmail.trim();
-    const message = fbMsg.trim();
-    if (!message) return;
-
-    setFbSending(true);
     try {
       const res = await fetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: email || null,
-          message,
-          category: fbCategory,
+          email: fbEmail.trim() || null,
+          message: fbMsg.trim(),
           page: "/",
-          url: typeof window !== "undefined" ? window.location.href : null,
         }),
       });
 
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(json?.error || "Feedback failed");
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || "Send failed");
       }
 
       setFbEmail("");
       setFbMsg("");
       setFbSent(true);
+      setToast("Sent.");
     } catch (e: any) {
       console.error(e);
-      setFbErr(e?.message || "Something went wrong.");
+      setToast("Feedback error: " + (e?.message || "Send failed"));
     } finally {
-      setFbSending(false);
+      setFbBusy(false);
     }
   }
-
-  async function onShare() {
-    const url = window.location.origin;
-    const r = await shareLink(url);
-    if (r.ok && r.mode === "native") setToast("Shared.");
-    else if (r.ok && r.mode === "clipboard") setToast("Link copied.");
-    else setToast("Could not share.");
-  }
-
-  const lastLockLabel = stats?.lastLockAt ? `Last lock: ${fmtDate(stats.lastLockAt)}` : "Last lock: —";
 
   return (
     <div className="bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
@@ -517,21 +441,22 @@ export default function Home() {
             <p className="mt-3 text-lg text-zinc-700 dark:text-zinc-200">
               <strong>Public registry of locked decisions.</strong>
             </p>
+
+            {/* (A) Hero copy: Execution reliability layer */}
+            <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-200">
+              <span className="font-semibold">Execution reliability layer.</span>{" "}
+              Lockpoint records commitments and outcomes — immutable by design.
+            </p>
             <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-              Decisions here are recorded as irreversible futures.
+              It doesn’t coach or remind. It creates a public reliability history.
             </p>
 
-            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400">
-              <Link href="/about" className="hover:text-zinc-900 dark:hover:text-white">About</Link>
-              <span className="text-zinc-300 dark:text-zinc-700">•</span>
-              <Link href="/roadmap" className="hover:text-zinc-900 dark:hover:text-white">Roadmap</Link>
-              <span className="text-zinc-300 dark:text-zinc-700">•</span>
-              <Link href="/faq" className="hover:text-zinc-900 dark:hover:text-white">FAQ</Link>
-              <span className="text-zinc-300 dark:text-zinc-700">•</span>
-              <button type="button" onClick={onShare} className="hover:text-zinc-900 dark:hover:text-white">
-                Share
-              </button>
-            </div>
+            <Link
+              href="/onboarding"
+              className="mt-3 inline-block text-sm text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+            >
+              What is Lockpoint?
+            </Link>
           </div>
 
           <div className="flex flex-col items-end gap-2">
@@ -539,7 +464,8 @@ export default function Home() {
               href="/me"
               className="
                 inline-flex shrink-0 items-center justify-center
-                rounded-full whitespace-nowrap
+                rounded-full
+                whitespace-nowrap
                 bg-zinc-900 text-white
                 h-10 px-4 text-sm font-medium
                 hover:bg-zinc-800
@@ -549,36 +475,9 @@ export default function Home() {
               Lock a decision
             </Link>
 
-            <div className="flex items-center gap-2">
-              {uid ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={signOut}
-                    className="text-[11px] text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
-                  >
-                    Sign out
-                  </button>
-                  <span className="text-[11px] text-zinc-400 dark:text-zinc-600">•</span>
-                  <Link
-                    href="/faq#delete-account"
-                    className="text-[11px] text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
-                  >
-                    Delete account?
-                  </Link>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={signIn}
-                  className="text-[11px] text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
-                >
-                  Sign in
-                </button>
-              )}
-            </div>
-
-            <span className="text-[11px] text-zinc-500 dark:text-zinc-400">Drafts + lock + outcomes</span>
+            <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
+              Drafts + lock + outcomes
+            </span>
           </div>
         </div>
 
@@ -647,59 +546,55 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Stats / Counters */}
+        {/* (B) Counters */}
         <div className="mt-10 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="text-sm font-semibold">Pulse</div>
               <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-                Public immutable activity.
+                Public execution history (immutable).
               </div>
             </div>
+
             <button
               type="button"
-              onClick={loadStats}
+              onClick={loadCounters}
               className="text-xs text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
             >
               Refresh →
             </button>
           </div>
 
-          {loadingStats ? (
+          {loadingCounters ? (
             <div className="mt-4 text-sm text-zinc-600 dark:text-zinc-300">Loading…</div>
-          ) : !stats ? (
-            <div className="mt-4 text-sm text-zinc-600 dark:text-zinc-300">Stats unavailable.</div>
+          ) : !counters ? (
+            <div className="mt-4 text-sm text-zinc-600 dark:text-zinc-300">Counters unavailable.</div>
           ) : (
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-6">
               <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3 dark:border-white/10 dark:bg-black/20">
                 <div className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">LOCKED</div>
-                <div className="mt-1 text-xl font-semibold">{stats.locked}</div>
+                <div className="mt-1 text-xl font-semibold">{counters.locked_count}</div>
               </div>
               <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3 dark:border-white/10 dark:bg-black/20">
                 <div className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">COMPLETED</div>
-                <div className="mt-1 text-xl font-semibold">{stats.completed}</div>
+                <div className="mt-1 text-xl font-semibold">{counters.completed_count}</div>
               </div>
               <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3 dark:border-white/10 dark:bg-black/20">
                 <div className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">FAILED</div>
-                <div className="mt-1 text-xl font-semibold">{stats.failed}</div>
+                <div className="mt-1 text-xl font-semibold">{counters.failed_count}</div>
               </div>
               <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3 dark:border-white/10 dark:bg-black/20">
-                <div className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">WITH STAKE</div>
-                <div className="mt-1 text-xl font-semibold">{stats.withStake}</div>
-              </div>
-
-              <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3 dark:border-white/10 dark:bg-black/20">
-                <div className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">DEADLINES 7D</div>
-                <div className="mt-1 text-xl font-semibold">{stats.deadlines7d}</div>
+                <div className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">DUE SOON (7D)</div>
+                <div className="mt-1 text-xl font-semibold">{counters.due_soon_count}</div>
               </div>
               <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3 dark:border-white/10 dark:bg-black/20">
-                <div className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">TOTAL STAKE</div>
-                <div className="mt-1 text-xl font-semibold">{stats.totalStake}</div>
-                <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">raw sum (no FX)</div>
+                <div className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">OVERDUE</div>
+                <div className="mt-1 text-xl font-semibold">{counters.overdue_count}</div>
               </div>
-              <div className="col-span-2 rounded-xl border border-zinc-200 bg-white px-3 py-3 dark:border-white/10 dark:bg-black/20">
-                <div className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">LAST LOCK</div>
-                <div className="mt-1 text-sm font-medium">{lastLockLabel}</div>
+              <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3 dark:border-white/10 dark:bg-black/20">
+                <div className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">STAKES SUM</div>
+                <div className="mt-1 text-xl font-semibold">{counters.stakes_sum}</div>
+                <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">raw sum</div>
               </div>
             </div>
           )}
@@ -802,12 +697,7 @@ export default function Home() {
             {loadingList ? (
               <div className="text-sm text-zinc-600 dark:text-zinc-300">Loading…</div>
             ) : items.length === 0 ? (
-              <div className="text-sm text-zinc-600 dark:text-zinc-300">
-                No records found.{" "}
-                <Link href="/me" className="underline underline-offset-2 hover:text-zinc-900 dark:hover:text-white">
-                  Be the first to lock one.
-                </Link>
-              </div>
+              <div className="text-sm text-zinc-600 dark:text-zinc-300">No records found.</div>
             ) : (
               items.map((t) => (
                 <Link
@@ -819,7 +709,8 @@ export default function Home() {
                     <div className="min-w-0">
                       <div className="text-sm font-medium truncate">
                         {t.title}
-                        {t.status === "locked" ? dueBadge(t.deadline_at) : null}
+                        {/* (C) Due indicator shown for locked */}
+                        {String(t.status).toLowerCase() === "locked" ? duePill(t.deadline_at) : null}
                       </div>
                       <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
                         <span className="font-mono">{shortId(t.id)}</span>
@@ -886,34 +777,17 @@ export default function Home() {
         <div className="mt-10 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
           <div className="text-sm font-semibold">Feedback</div>
           <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-            Tell me what broke, what feels wrong, or what you want next.
+            Tell me what broke or what you want next.
           </div>
 
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label className="text-xs font-medium">Category</label>
-              <select
-                value={fbCategory}
-                onChange={(e) => setFbCategory(e.target.value as any)}
-                className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-              >
-                <option value="Bug">Bug</option>
-                <option value="UX">UX</option>
-                <option value="Idea">Idea</option>
-                <option value="Account">Account</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-xs font-medium">Email (optional)</label>
-              <input
-                value={fbEmail}
-                onChange={(e) => setFbEmail(e.target.value)}
-                className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                placeholder="you@email.com"
-              />
-            </div>
+          <div className="mt-4">
+            <label className="text-xs font-medium">Email</label>
+            <input
+              value={fbEmail}
+              onChange={(e) => setFbEmail(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+              placeholder="you@email.com (optional)"
+            />
           </div>
 
           <div className="mt-4">
@@ -923,35 +797,22 @@ export default function Home() {
               onChange={(e) => setFbMsg(e.target.value)}
               className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
               rows={3}
-              placeholder="Feedback, ideas, collaboration — anything."
+              placeholder="Feedback, ideas, collaboration — anything you want to share."
             />
           </div>
 
           <button
             type="button"
-            disabled={!fbMsg.trim() || fbSending}
-            onClick={submitFeedback}
+            disabled={!fbMsg.trim() || fbBusy}
+            onClick={sendFeedback}
             className="mt-4 h-11 rounded-full border border-zinc-200 bg-white px-5 text-sm font-medium hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
           >
-            {fbSending ? "Sending…" : "Send"}
+            {fbBusy ? "Sending…" : "Send"}
           </button>
 
           {fbSent ? (
             <div className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">Sent. Thank you.</div>
           ) : null}
-
-          {fbErr ? (
-            <div className="mt-3 text-xs text-red-600 dark:text-red-300">Error: {fbErr}</div>
-          ) : null}
-        </div>
-
-        {/* Footer links */}
-        <div className="mt-10 flex flex-wrap items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400">
-          <Link href="/terms" className="hover:text-zinc-900 dark:hover:text-white">Terms</Link>
-          <span className="text-zinc-300 dark:text-zinc-700">•</span>
-          <Link href="/privacy" className="hover:text-zinc-900 dark:hover:text-white">Privacy</Link>
-          <span className="text-zinc-300 dark:text-zinc-700">•</span>
-          <Link href="/disclaimer" className="hover:text-zinc-900 dark:hover:text-white">Disclaimer</Link>
         </div>
       </main>
     </div>
