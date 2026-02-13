@@ -60,7 +60,7 @@ export async function POST(req: Request) {
     await resend.emails.send({
       from: FROM,                 // must be from your verified domain (lockpoint.app)
       to: [TO],                   // your Gmail (or any inbox)
-      replyTo: safeReplyTo,       // optional
+      reply_to: safeReplyTo,      // optional
       subject: `Lockpoint feedback${page ? ` — ${page}` : ""}`,
       text: [
         "Message:",
