@@ -21,6 +21,10 @@ type StatusFilter = "all" | "locked" | "completed" | "failed";
 type DeadlineFilter = "any" | "this_week" | "this_month" | "expired";
 type SortMode = "newest" | "deadline" | "recently_locked";
 
+function cx(...arr: Array<string | false | null | undefined>) {
+  return arr.filter(Boolean).join(" ");
+}
+
 function shortId(id: string) {
   if (!id) return "";
   if (id.length <= 14) return id;
@@ -65,7 +69,15 @@ function statusPill(statusRaw?: string | null) {
   const s = String(statusRaw ?? "").toLowerCase();
 
   const label =
-    s === "locked" ? "LOCKED" : s === "completed" ? "COMPLETED" : s === "failed" ? "FAILED" : s ? s.toUpperCase() : "—";
+    s === "locked"
+      ? "LOCKED"
+      : s === "completed"
+      ? "COMPLETED"
+      : s === "failed"
+      ? "FAILED"
+      : s
+      ? s.toUpperCase()
+      : "—";
 
   const cls =
     s === "locked"
@@ -77,7 +89,12 @@ function statusPill(statusRaw?: string | null) {
       : "border-zinc-200 bg-white text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200";
 
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide ${cls}`}>
+    <span
+      className={cx(
+        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide",
+        cls
+      )}
+    >
       {label}
     </span>
   );
@@ -101,7 +118,7 @@ function duePill(deadlineIso?: string | null) {
     : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100";
 
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${cls}`}>
+    <span className={cx("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold", cls)}>
       {label}
     </span>
   );
@@ -125,10 +142,6 @@ type Pulse = {
   stakesSum: number;
 };
 
-function cx(...arr: Array<string | false | null | undefined>) {
-  return arr.filter(Boolean).join(" ");
-}
-
 export default function Home() {
   const registryRef = useRef<HTMLDivElement | null>(null);
 
@@ -150,7 +163,14 @@ export default function Home() {
   }, [draftTitle, draftCommitment]);
 
   // Pulse
-  const [pulse, setPulse] = useState<Pulse>({ locked: 0, completed: 0, failed: 0, dueSoon: 0, overdue: 0, stakesSum: 0 });
+  const [pulse, setPulse] = useState<Pulse>({
+    locked: 0,
+    completed: 0,
+    failed: 0,
+    dueSoon: 0,
+    overdue: 0,
+    stakesSum: 0,
+  });
   const [loadingPulse, setLoadingPulse] = useState(true);
 
   // Registry state
@@ -173,10 +193,15 @@ export default function Home() {
   const [fbMsg, setFbMsg] = useState("");
   const [fbSending, setFbSending] = useState(false);
 
+  function scrollToRegistry() {
+    registryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   function resetPaging() {
     setPage(1);
   }
 
+  // --- Auth bootstrap
   useEffect(() => {
     let mounted = true;
 
@@ -214,12 +239,17 @@ export default function Home() {
     setToast("Signed out.");
   }
 
+  // --- Pulse load
   async function loadPulse() {
     setLoadingPulse(true);
     try {
       const base = supabase.from("trajectories").select("id", { count: "exact", head: true }).eq("is_public", true);
 
-      const [lockedR, completedR, failedR] = await Promise.all([base.eq("status", "locked"), base.eq("status", "completed"), base.eq("status", "failed")]);
+      const [lockedR, completedR, failedR] = await Promise.all([
+        base.eq("status", "locked"),
+        base.eq("status", "completed"),
+        base.eq("status", "failed"),
+      ]);
 
       const todayIso = getStartOfTodayISO();
       const soonIso = getISODatePlusDays(7);
@@ -239,7 +269,13 @@ export default function Home() {
         .in("status", ["locked", "completed", "failed"])
         .lt("deadline_at", todayIso);
 
-      const stakesR = await supabase.from("trajectories").select("stake_amount").eq("is_public", true).not("stake_amount", "is", null).limit(2000);
+      const stakesR = await supabase
+        .from("trajectories")
+        .select("stake_amount")
+        .eq("is_public", true)
+        .not("stake_amount", "is", null)
+        .limit(2000);
+
       const stakesSum = (stakesR.data ?? []).reduce((acc: number, r: any) => acc + (Number(r.stake_amount) || 0), 0);
 
       setPulse({
@@ -257,6 +293,7 @@ export default function Home() {
     }
   }
 
+  // --- Registry load
   async function loadRegistry(p: number) {
     setLoadingList(true);
 
@@ -296,16 +333,19 @@ export default function Home() {
     setLoadingList(false);
   }
 
+  // reset paging when filters change
   useEffect(() => {
     resetPaging();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, deadlineFilter, withStakeOnly, sortMode]);
 
+  // initial load
   useEffect(() => {
     loadPulse();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // list load
   useEffect(() => {
     loadRegistry(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -388,37 +428,46 @@ export default function Home() {
     }
   }
 
-  function scrollToRegistry() {
-    registryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
+  const whatYouGet = [
+    { t: "A public deadline", d: "A date you can’t quietly move." },
+    { t: "A permanent record", d: "No edits after lock." },
+    { t: "A visible execution history", d: "Follow-through becomes trackable." },
+    { t: "Reputation based on outcomes", d: "Completed / Failed is public." },
+  ];
 
   return (
     <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
-      <Header userId={userId} userEmail={userEmail} onSignIn={signIn} onSignOut={signOut} />
+      <Header
+        userId={userId}
+        userEmail={userEmail}
+        onSignIn={signIn}
+        onSignOut={signOut}
+        onGoRegistry={scrollToRegistry}
+      />
 
-      <main className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
+      <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
         {/* HERO */}
         <section className="relative overflow-hidden rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5 sm:p-10">
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-zinc-50 to-white dark:from-white/5 dark:to-black/30" />
 
-          <div className="relative grid grid-cols-1 gap-8 sm:grid-cols-12 sm:items-start">
-            <div className="sm:col-span-8">
-              <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Public registry of irreversible commitments.</h1>
+          <div className="relative grid grid-cols-1 gap-8 lg:grid-cols-12 lg:items-start">
+            <div className="lg:col-span-8">
+              <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Make a decision you cannot edit.</h1>
 
-              <p className="mt-4 max-w-2xl text-sm leading-relaxed text-zinc-700 dark:text-zinc-200">
-                <span className="font-semibold">Execution reliability layer.</span> Lockpoint records commitments and outcomes — immutable by design.
-                <br />
-                It doesn’t coach or remind. It creates a public reliability history.
+              <p className="mt-3 text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+                Public. Permanent. Outcome recorded.
               </p>
 
-              {/* Future-facing, but still crisp */}
+              <p className="mt-4 max-w-2xl text-sm leading-relaxed text-zinc-700 dark:text-zinc-200">
+                Lockpoint is a public registry for locked commitments. Once locked, the record stays — you can only add outcomes later.
+              </p>
+
               <div className="mt-5 max-w-2xl text-sm text-zinc-600 dark:text-zinc-300">
-                Over time this becomes an <span className="font-semibold text-zinc-900 dark:text-zinc-100">Execution Identity Layer</span>: a public trail of follow-through.
+                Over time, consistent execution becomes a form of capital — a measurable public reliability signal.
               </div>
 
-              {/* Better chips */}
               <div className="mt-6 flex flex-wrap gap-2">
-                {["Immutable", "Public history", "Outcome recorded", "No edits"].map((x) => (
+                {["Immutable", "Public", "Timestamped", "No edits"].map((x) => (
                   <span
                     key={x}
                     className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-[11px] font-semibold text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200"
@@ -428,19 +477,24 @@ export default function Home() {
                 ))}
               </div>
 
-              {/* Tiny legal links (minimal, not a footer) */}
               <div className="mt-6 flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-                <Link href="/terms" className="hover:text-zinc-900 dark:hover:text-white">Terms</Link>
-                <Link href="/privacy" className="hover:text-zinc-900 dark:hover:text-white">Privacy</Link>
-                <Link href="/disclaimer" className="hover:text-zinc-900 dark:hover:text-white">Disclaimer</Link>
+                <Link href="/terms" className="hover:text-zinc-900 dark:hover:text-white">
+                  Terms
+                </Link>
+                <Link href="/privacy" className="hover:text-zinc-900 dark:hover:text-white">
+                  Privacy
+                </Link>
+                <Link href="/disclaimer" className="hover:text-zinc-900 dark:hover:text-white">
+                  Disclaimer
+                </Link>
               </div>
             </div>
 
-            <div className="sm:col-span-4 sm:justify-self-end">
-              <div className="flex flex-col gap-3 sm:items-end">
+            <div className="lg:col-span-4 lg:justify-self-end">
+              <div className="flex flex-col gap-3 lg:items-end">
                 <Link
                   href="/me"
-                  className="inline-flex h-12 w-full items-center justify-center rounded-full bg-zinc-900 px-6 text-sm font-semibold text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200 sm:w-auto"
+                  className="inline-flex h-12 w-full items-center justify-center rounded-full bg-zinc-900 px-6 text-sm font-semibold text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200 lg:w-auto"
                 >
                   Lock a decision
                 </Link>
@@ -448,28 +502,47 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={scrollToRegistry}
-                  className="inline-flex h-12 w-full items-center justify-center rounded-full border border-zinc-200 bg-white px-6 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-100 dark:hover:bg-white/10 sm:w-auto"
+                  className="inline-flex h-12 w-full items-center justify-center rounded-full border border-zinc-200 bg-white px-6 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-100 dark:hover:bg-white/10 lg:w-auto"
                 >
                   View registry
                 </button>
 
-                <div className="text-center text-[11px] text-zinc-500 dark:text-zinc-400 sm:text-right">Drafts → Lock → Outcomes</div>
+                <div className="text-center text-[11px] text-zinc-500 dark:text-zinc-400 lg:text-right">
+                  Drafts → Lock → Outcomes
+                </div>
               </div>
             </div>
           </div>
+
+          {/* WHAT YOU GET */}
+          <div className="relative mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {whatYouGet.map((x) => (
+              <div
+                key={x.t}
+                className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-black/20"
+              >
+                <div className="text-sm font-semibold">{x.t}</div>
+                <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">{x.d}</div>
+              </div>
+            ))}
+          </div>
         </section>
 
-        {/* 3-UP: Create + Pulse + Examples (mobile stacks) */}
-        <section className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-12">
+        {/* CREATE + PULSE */}
+        <section className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-12">
           {/* Create */}
           <div className="rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5 lg:col-span-6">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold">Create decision draft</div>
-                <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">Drafts are editable. Locking is irreversible.</div>
+                <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+                  Drafts are editable. Locking is irreversible.
+                </div>
               </div>
-
-              <Link href="/me" className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white">
+              <Link
+                href="/me"
+                className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+              >
                 My cabinet →
               </Link>
             </div>
@@ -496,20 +569,26 @@ export default function Home() {
                 />
               </div>
 
-              <button
-                type="button"
-                disabled={busy || !canCreateDraft}
-                onClick={createDraft}
-                className="h-12 w-full rounded-full bg-zinc-900 px-6 text-sm font-semibold text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200 sm:w-auto"
-              >
-                {busy ? "Creating…" : "Create draft →"}
-              </button>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <button
+                  type="button"
+                  disabled={busy || !canCreateDraft}
+                  onClick={createDraft}
+                  className="h-12 rounded-full bg-zinc-900 px-6 text-sm font-semibold text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                >
+                  {busy ? "Creating…" : "Create draft →"}
+                </button>
 
-              {toast && (
-                <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-black/20 dark:text-zinc-200">
-                  {toast}
-                </div>
-              )}
+                {toast ? (
+                  <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-black/20 dark:text-zinc-200">
+                    {toast}
+                  </div>
+                ) : (
+                  <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                    Not signed in? You’ll be redirected to Google.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -518,7 +597,9 @@ export default function Home() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold">Pulse</div>
-                <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">Public execution history (immutable).</div>
+                <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+                  Public execution history (immutable).
+                </div>
               </div>
               <button
                 type="button"
@@ -538,15 +619,20 @@ export default function Home() {
                 { k: "Overdue", v: pulse.overdue },
                 { k: "At stake", v: pulse.stakesSum ? `$${money(pulse.stakesSum)}` : "—" },
               ].map((c) => (
-                <div key={c.k} className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 dark:border-white/10 dark:bg-black/20">
-                  <div className="text-[10px] font-semibold tracking-wide text-zinc-500 dark:text-zinc-400">{c.k.toUpperCase()}</div>
+                <div
+                  key={c.k}
+                  className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 dark:border-white/10 dark:bg-black/20"
+                >
+                  <div className="text-[10px] font-semibold tracking-wide text-zinc-500 dark:text-zinc-400">
+                    {c.k.toUpperCase()}
+                  </div>
                   <div className="mt-2 text-2xl font-semibold tracking-tight">{loadingPulse ? "…" : c.v}</div>
                 </div>
               ))}
             </div>
 
             <div className="mt-5 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-600 dark:border-white/10 dark:bg-black/20 dark:text-zinc-300">
-              Lockpoint does not plan, remind, coach, or motivate. It only records commitment and outcome.
+              Decisions change people. Public irreversibility creates pressure.
             </div>
           </div>
         </section>
@@ -568,16 +654,18 @@ export default function Home() {
         </section>
 
         {/* Registry */}
-        <section
-          ref={registryRef}
-          className="mt-8 rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5"
-        >
+        <section ref={registryRef} className="mt-6 rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="text-sm font-semibold">Public Registry</div>
-              <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">Public records only. Immutable once locked.</div>
+              <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+                Public records only. Immutable once locked.
+              </div>
             </div>
-            <Link href="/me" className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white">
+            <Link
+              href="/me"
+              className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+            >
               My cabinet →
             </Link>
           </div>
@@ -648,7 +736,12 @@ export default function Home() {
                       : "border-zinc-200 bg-zinc-50 dark:border-white/10 dark:bg-black/20"
                   )}
                 >
-                  <span className={cx("h-4 w-4 rounded-full bg-white transition dark:bg-black", withStakeOnly ? "translate-x-5" : "translate-x-0")} />
+                  <span
+                    className={cx(
+                      "h-4 w-4 rounded-full bg-white transition dark:bg-black",
+                      withStakeOnly ? "translate-x-5" : "translate-x-0"
+                    )}
+                  />
                 </span>
               </button>
             </div>
@@ -660,42 +753,47 @@ export default function Home() {
             ) : items.length === 0 ? (
               <div className="text-sm text-zinc-600 dark:text-zinc-300">No records found.</div>
             ) : (
-              items.map((t) => (
-                <Link
-                  key={t.id}
-                  href={`/t/${t.id}`}
-                  className="block rounded-2xl border border-zinc-200 bg-white px-4 py-4 hover:bg-zinc-50 dark:border-white/10 dark:bg-black/20 dark:hover:bg-white/5"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold">{t.title}</div>
+              items.map((t) => {
+                const isLocked = String(t.status ?? "").toLowerCase() === "locked";
+                return (
+                  <Link
+                    key={t.id}
+                    href={`/t/${t.id}`}
+                    className="block rounded-2xl border border-zinc-200 bg-white px-4 py-4 hover:bg-zinc-50 dark:border-white/10 dark:bg-black/20 dark:hover:bg-white/5"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold">{t.title}</div>
 
-                      <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-zinc-600 dark:text-zinc-300 sm:grid-cols-2">
-                        <div className="font-mono text-zinc-500 dark:text-zinc-400">{shortId(t.id)}</div>
+                        <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-zinc-600 dark:text-zinc-300 sm:grid-cols-2">
+                          <div className="font-mono text-zinc-500 dark:text-zinc-400">{shortId(t.id)}</div>
 
-                        <div className="sm:text-right text-zinc-500 dark:text-zinc-400">
-                          {t.locked_at ? `Locked ${fmtPrettyDate(t.locked_at)}` : `Created ${fmtPrettyDate(t.created_at)}`}
+                          <div className="sm:text-right text-zinc-500 dark:text-zinc-400">
+                            {t.locked_at ? `Locked ${fmtPrettyDate(t.locked_at)}` : `Created ${fmtPrettyDate(t.created_at)}`}
+                          </div>
+
+                          <div className="text-zinc-500 dark:text-zinc-400">
+                            {t.deadline_at ? `Deadline ${fmtPrettyDate(t.deadline_at)}` : "No deadline"}
+                          </div>
+
+                          <div className="sm:text-right text-zinc-500 dark:text-zinc-400">
+                            {t.stake_amount != null
+                              ? `Stake ${t.stake_amount}${t.stake_currency ? ` ${t.stake_currency}` : ""}`
+                              : "No stake"}
+                          </div>
                         </div>
+                      </div>
 
-                        <div className="text-zinc-500 dark:text-zinc-400">
-                          {t.deadline_at ? `Deadline ${fmtPrettyDate(t.deadline_at)}` : "No deadline"}
-                        </div>
-
-                        <div className="sm:text-right text-zinc-500 dark:text-zinc-400">
-                          {t.stake_amount != null ? `Stake ${t.stake_amount}${t.stake_currency ? ` ${t.stake_currency}` : ""}` : "No stake"}
+                      <div className="shrink-0 text-right">
+                        <div className="flex flex-col items-end gap-2">
+                          {isLocked ? duePill(t.deadline_at) : null}
+                          {statusPill(t.status)}
                         </div>
                       </div>
                     </div>
-
-                    <div className="shrink-0 text-right">
-                      <div className="flex flex-col items-end gap-2">
-                        {duePill(t.deadline_at)}
-                        {statusPill(t.status)}
-                      </div>
-                    </div>
-                  </div>
-                </Link>
-              ))
+                  </Link>
+                );
+              })
             )}
           </div>
 
@@ -723,17 +821,20 @@ export default function Home() {
         </section>
 
         {/* Why irreversible */}
-        <section className="mt-8 rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5">
+        <section className="mt-6 rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5">
           <div className="text-sm font-semibold">Why irreversible?</div>
+
           <div className="mt-3 grid grid-cols-1 gap-3 text-sm text-zinc-700 dark:text-zinc-200 sm:grid-cols-3">
             <div className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-black/20">
               <div className="font-semibold">Editability kills seriousness</div>
               <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">If it can be rewritten, it was never real.</div>
             </div>
+
             <div className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-black/20">
               <div className="font-semibold">Public memory creates pressure</div>
-              <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">Your future self inherits your past.</div>
+              <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">A public promise changes behavior.</div>
             </div>
+
             <div className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-black/20">
               <div className="font-semibold">Outcomes don’t disappear</div>
               <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">Failure is recorded, not hidden.</div>
@@ -742,7 +843,7 @@ export default function Home() {
         </section>
 
         {/* Feedback */}
-        <section className="mt-8 rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5">
+        <section className="mt-6 rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5">
           <div className="text-sm font-semibold">Feedback</div>
           <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">Tell me what broke or what you want next.</div>
 
@@ -779,7 +880,7 @@ export default function Home() {
               {fbSending ? "Sending…" : "Send feedback →"}
             </button>
 
-            {/* no “Replies go…” text */}
+            {toast ? <div className="text-xs text-zinc-500 dark:text-zinc-400">{toast}</div> : null}
           </div>
         </section>
       </main>
