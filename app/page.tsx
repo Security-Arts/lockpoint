@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import Header from "@/components/Header";
 
 type Trajectory = {
   id: string;
@@ -26,26 +27,13 @@ function shortId(id: string) {
   return `${id.slice(0, 6)}…${id.slice(-6)}`;
 }
 
-function fmtDate(iso?: string | null) {
-  if (!iso) return "";
-  try {
-    const d = new Date(iso);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
-  } catch {
-    return String(iso);
-  }
-}
-
 function fmtPrettyDate(iso?: string | null) {
   if (!iso) return "";
   try {
     const d = new Date(iso);
     return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
   } catch {
-    return fmtDate(iso);
+    return String(iso);
   }
 }
 
@@ -65,19 +53,19 @@ function getStartOfTodayISO() {
   return startOfToday().toISOString();
 }
 
+function money(n: number) {
+  try {
+    return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(n);
+  } catch {
+    return String(n);
+  }
+}
+
 function statusPill(statusRaw?: string | null) {
   const s = String(statusRaw ?? "").toLowerCase();
 
   const label =
-    s === "locked"
-      ? "LOCKED"
-      : s === "completed"
-      ? "COMPLETED"
-      : s === "failed"
-      ? "FAILED"
-      : s
-      ? s.toUpperCase()
-      : "—";
+    s === "locked" ? "LOCKED" : s === "completed" ? "COMPLETED" : s === "failed" ? "FAILED" : s ? s.toUpperCase() : "—";
 
   const cls =
     s === "locked"
@@ -89,9 +77,7 @@ function statusPill(statusRaw?: string | null) {
       : "border-zinc-200 bg-white text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200";
 
   return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide ${cls}`}
-    >
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide ${cls}`}>
       {label}
     </span>
   );
@@ -121,24 +107,13 @@ function duePill(deadlineIso?: string | null) {
   );
 }
 
-function money(n: number) {
-  try {
-    return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(n);
-  } catch {
-    return String(n);
-  }
-}
-
 const EXAMPLES = [
-  "Launch a product and make 10 sales by 2026-04-01",
-  "Reach $10,000 monthly revenue by 2026-09-01",
   "Ship one release every week for 12 weeks",
-  "Sign 3 paying B2B clients by 2026-04-31",
-  "Delete all social media for 12 months",
-  "Visit 8 countries in 2026",
+  "Make 10 sales by 2026-04-01",
+  "Reach $10,000 monthly revenue by 2026-09-01",
+  "Quit alcohol for 180 days",
+  "Delete social media for 12 months",
   "Run a marathon before 2026-10-01",
-  "No alcohol for 180 days",
-  "Read 50 books in 2026",
 ];
 
 type Pulse = {
@@ -149,6 +124,10 @@ type Pulse = {
   overdue: number;
   stakesSum: number;
 };
+
+function cx(...arr: Array<string | false | null | undefined>) {
+  return arr.filter(Boolean).join(" ");
+}
 
 export default function Home() {
   const registryRef = useRef<HTMLDivElement | null>(null);
@@ -171,14 +150,7 @@ export default function Home() {
   }, [draftTitle, draftCommitment]);
 
   // Pulse
-  const [pulse, setPulse] = useState<Pulse>({
-    locked: 0,
-    completed: 0,
-    failed: 0,
-    dueSoon: 0,
-    overdue: 0,
-    stakesSum: 0,
-  });
+  const [pulse, setPulse] = useState<Pulse>({ locked: 0, completed: 0, failed: 0, dueSoon: 0, overdue: 0, stakesSum: 0 });
   const [loadingPulse, setLoadingPulse] = useState(true);
 
   // Registry state
@@ -205,7 +177,6 @@ export default function Home() {
     setPage(1);
   }
 
-  // --- Auth bootstrap
   useEffect(() => {
     let mounted = true;
 
@@ -243,18 +214,12 @@ export default function Home() {
     setToast("Signed out.");
   }
 
-  // --- Pulse load (MVP: few simple queries)
   async function loadPulse() {
     setLoadingPulse(true);
     try {
-      // counts (approx strategy: fetch ids per status; fine for MVP)
       const base = supabase.from("trajectories").select("id", { count: "exact", head: true }).eq("is_public", true);
 
-      const [lockedR, completedR, failedR] = await Promise.all([
-        base.eq("status", "locked"),
-        base.eq("status", "completed"),
-        base.eq("status", "failed"),
-      ]);
+      const [lockedR, completedR, failedR] = await Promise.all([base.eq("status", "locked"), base.eq("status", "completed"), base.eq("status", "failed")]);
 
       const todayIso = getStartOfTodayISO();
       const soonIso = getISODatePlusDays(7);
@@ -274,14 +239,7 @@ export default function Home() {
         .in("status", ["locked", "completed", "failed"])
         .lt("deadline_at", todayIso);
 
-      // stakes sum (MVP: fetch stake_amount and reduce; limit to 2000 to protect UI)
-      const stakesR = await supabase
-        .from("trajectories")
-        .select("stake_amount")
-        .eq("is_public", true)
-        .not("stake_amount", "is", null)
-        .limit(2000);
-
+      const stakesR = await supabase.from("trajectories").select("stake_amount").eq("is_public", true).not("stake_amount", "is", null).limit(2000);
       const stakesSum = (stakesR.data ?? []).reduce((acc: number, r: any) => acc + (Number(r.stake_amount) || 0), 0);
 
       setPulse({
@@ -299,7 +257,6 @@ export default function Home() {
     }
   }
 
-  // --- Registry load
   async function loadRegistry(p: number) {
     setLoadingList(true);
 
@@ -311,28 +268,18 @@ export default function Home() {
     if (statusFilter === "all") q = q.in("status", ["locked", "completed", "failed"]);
     else q = q.eq("status", statusFilter);
 
-    if (deadlineFilter === "this_week") {
-      q = q.gte("deadline_at", getStartOfTodayISO()).lte("deadline_at", getISODatePlusDays(7));
-    } else if (deadlineFilter === "this_month") {
-      q = q.gte("deadline_at", getStartOfTodayISO()).lte("deadline_at", getISODatePlusDays(31));
-    } else if (deadlineFilter === "expired") {
-      q = q.lt("deadline_at", getStartOfTodayISO());
-    }
+    if (deadlineFilter === "this_week") q = q.gte("deadline_at", getStartOfTodayISO()).lte("deadline_at", getISODatePlusDays(7));
+    else if (deadlineFilter === "this_month") q = q.gte("deadline_at", getStartOfTodayISO()).lte("deadline_at", getISODatePlusDays(31));
+    else if (deadlineFilter === "expired") q = q.lt("deadline_at", getStartOfTodayISO());
 
     if (withStakeOnly) q = q.not("stake_amount", "is", null);
 
-    if (sortMode === "deadline") {
-      q = q.order("deadline_at", { ascending: true, nullsFirst: false });
-    } else if (sortMode === "recently_locked") {
-      q = q.order("locked_at", { ascending: false, nullsFirst: false });
-    } else {
-      q = q.order("locked_at", { ascending: false, nullsFirst: false }).order("created_at", {
-        ascending: false,
-      });
-    }
+    if (sortMode === "deadline") q = q.order("deadline_at", { ascending: true, nullsFirst: false });
+    else if (sortMode === "recently_locked") q = q.order("locked_at", { ascending: false, nullsFirst: false });
+    else q = q.order("locked_at", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false });
 
     const from = (p - 1) * PAGE_SIZE;
-    const to = from + PAGE_SIZE; // fetch PAGE_SIZE + 1 rows (inclusive range)
+    const to = from + PAGE_SIZE;
     const { data, error } = await q.range(from, to);
 
     if (error) {
@@ -349,13 +296,11 @@ export default function Home() {
     setLoadingList(false);
   }
 
-  // reset paging when filters change
   useEffect(() => {
     resetPaging();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, deadlineFilter, withStakeOnly, sortMode]);
 
-  // load pulse and registry
   useEffect(() => {
     loadPulse();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -386,22 +331,14 @@ export default function Home() {
     if (!uid) {
       setToast("Please sign in to create drafts.");
       setBusy(false);
-
-      // give UI a tick to show toast
-      await new Promise((r) => setTimeout(r, 350));
+      await new Promise((r) => setTimeout(r, 250));
       await signIn();
       return;
     }
 
     const { data, error } = await supabase
       .from("trajectories")
-      .insert({
-        owner_id: uid,
-        title,
-        commitment,
-        status: "draft",
-        is_public: false,
-      })
+      .insert({ owner_id: uid, title, commitment, status: "draft", is_public: false })
       .select("id")
       .single();
 
@@ -430,11 +367,7 @@ export default function Home() {
       const res = await fetch("/api/feedback", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          email: fbEmail.trim() || null,
-          message,
-          page: "/",
-        }),
+        body: JSON.stringify({ email: fbEmail.trim() || null, message, page: "/" }),
       });
 
       const j = await res.json().catch(() => ({}));
@@ -461,139 +394,172 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
-      {/* Top nav */}
-      <header className="sticky top-0 z-20 border-b border-zinc-200 bg-zinc-50/80 backdrop-blur dark:border-white/10 dark:bg-black/60">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="text-sm font-semibold tracking-tight hover:opacity-80">
-              Lockpoint
-            </Link>
-            <span className="hidden text-[11px] text-zinc-500 dark:text-zinc-400 sm:inline">
-              Execution reliability layer
-            </span>
-          </div>
+      <Header userId={userId} userEmail={userEmail} onSignIn={signIn} onSignOut={signOut} onGoRegistry={scrollToRegistry} />
 
-          <nav className="flex items-center gap-2 sm:gap-3">
-            <button
-              type="button"
-              onClick={scrollToRegistry}
-              className="hidden rounded-full px-3 py-2 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-white/5 sm:inline"
-            >
-              Registry
-            </button>
-            <Link
-              href="/roadmap"
-              className="hidden rounded-full px-3 py-2 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-white/5 sm:inline"
-            >
-              Roadmap
-            </Link>
-            <Link
-              href="/faq"
-              className="hidden rounded-full px-3 py-2 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-white/5 sm:inline"
-            >
-              FAQ
-            </Link>
-            <Link
-              href="/onboarding"
-              className="rounded-full px-3 py-2 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-white/5"
-            >
-              What is Lockpoint?
-            </Link>
+      <main className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
+        {/* HERO */}
+        <section className="relative overflow-hidden rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5 sm:p-10">
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-zinc-50 to-white dark:from-white/5 dark:to-black/30" />
 
-            <div className="ml-1 hidden h-6 w-px bg-zinc-200 dark:bg-white/10 sm:block" />
+          <div className="relative grid grid-cols-1 gap-8 sm:grid-cols-12 sm:items-start">
+            <div className="sm:col-span-8">
+              <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Public registry of irreversible commitments.</h1>
 
-            {userId ? (
-              <>
+              <p className="mt-4 max-w-2xl text-sm leading-relaxed text-zinc-700 dark:text-zinc-200">
+                <span className="font-semibold">Execution reliability layer.</span> Lockpoint records commitments and outcomes — immutable by design.
+                <br />
+                It doesn’t coach or remind. It creates a public reliability history.
+              </p>
+
+              {/* Future-facing, but still crisp */}
+              <div className="mt-5 max-w-2xl text-sm text-zinc-600 dark:text-zinc-300">
+                Over time this becomes an <span className="font-semibold text-zinc-900 dark:text-zinc-100">Execution Identity Layer</span>: a public trail of follow-through.
+              </div>
+
+              {/* Better chips */}
+              <div className="mt-6 flex flex-wrap gap-2">
+                {["Immutable", "Public history", "Outcome recorded", "No edits"].map((x) => (
+                  <span
+                    key={x}
+                    className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-[11px] font-semibold text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200"
+                  >
+                    {x}
+                  </span>
+                ))}
+              </div>
+
+              {/* Tiny legal links (minimal, not a footer) */}
+              <div className="mt-6 flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+                <Link href="/terms" className="hover:text-zinc-900 dark:hover:text-white">Terms</Link>
+                <Link href="/privacy" className="hover:text-zinc-900 dark:hover:text-white">Privacy</Link>
+                <Link href="/disclaimer" className="hover:text-zinc-900 dark:hover:text-white">Disclaimer</Link>
+              </div>
+            </div>
+
+            <div className="sm:col-span-4 sm:justify-self-end">
+              <div className="flex flex-col gap-3 sm:items-end">
                 <Link
                   href="/me"
-                  className="rounded-full px-3 py-2 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-white/5"
-                  title={userEmail ?? undefined}
+                  className="inline-flex h-12 w-full items-center justify-center rounded-full bg-zinc-900 px-6 text-sm font-semibold text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200 sm:w-auto"
                 >
-                  My cabinet
+                  Lock a decision
                 </Link>
+
                 <button
                   type="button"
-                  onClick={signOut}
-                  className="rounded-full px-3 py-2 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-white/5"
+                  onClick={scrollToRegistry}
+                  className="inline-flex h-12 w-full items-center justify-center rounded-full border border-zinc-200 bg-white px-6 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-100 dark:hover:bg-white/10 sm:w-auto"
                 >
-                  Sign out
+                  View registry
                 </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={signIn}
-                className="rounded-full px-3 py-2 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-white/5"
-              >
-                Sign in
-              </button>
-            )}
-          </nav>
-        </div>
-      </header>
 
-      <main className="mx-auto w-full max-w-5xl px-6 py-12 sm:py-16">
-        {/* Hero */}
-        <section className="grid grid-cols-1 gap-8 sm:grid-cols-12 sm:items-start">
-          <div className="sm:col-span-8">
-            <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Lockpoint</h1>
-            <p className="mt-3 text-xl font-semibold text-zinc-800 dark:text-zinc-100">
-              Public registry of irreversible commitments.
-            </p>
-
-            <div className="mt-4 space-y-2 text-sm leading-relaxed text-zinc-700 dark:text-zinc-200">
-              <p>
-                <span className="font-medium">Execution reliability layer.</span> Lockpoint records commitments and
-                outcomes — immutable by design.
-              </p>
-              <p>It doesn’t coach or remind. It creates public execution history.</p>
-            </div>
-
-            {/* Credibility strip */}
-            <div className="mt-6 inline-flex flex-wrap items-center gap-2 rounded-full border border-zinc-200 bg-white px-4 py-2 text-[11px] font-medium text-zinc-600 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300">
-              <span className="rounded-full bg-zinc-100 px-2 py-0.5 dark:bg-white/10">Immutable</span>
-              <span className="rounded-full bg-zinc-100 px-2 py-0.5 dark:bg-white/10">Public</span>
-              <span className="rounded-full bg-zinc-100 px-2 py-0.5 dark:bg-white/10">Timestamped</span>
-              <span className="rounded-full bg-zinc-100 px-2 py-0.5 dark:bg-white/10">No edits</span>
-            </div>
-          </div>
-
-          <div className="sm:col-span-4 sm:justify-self-end">
-            <div className="flex flex-col items-stretch gap-3 sm:items-end">
-              <Link
-                href="/me"
-                className="
-                  inline-flex items-center justify-center
-                  rounded-full
-                  bg-zinc-900 px-5 py-3 text-sm font-semibold text-white
-                  hover:bg-zinc-800
-                  dark:bg-white dark:text-black dark:hover:bg-zinc-200
-                "
-              >
-                Lock a decision
-              </Link>
-
-              <button
-                type="button"
-                onClick={scrollToRegistry}
-                className="inline-flex items-center justify-center rounded-full border border-zinc-200 bg-white px-5 py-3 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-100 dark:hover:bg-white/10"
-              >
-                View registry
-              </button>
-
-              <div className="text-center text-[11px] text-zinc-500 dark:text-zinc-400 sm:text-right">
-                Drafts + lock + outcomes
+                <div className="text-center text-[11px] text-zinc-500 dark:text-zinc-400 sm:text-right">Drafts → Lock → Outcomes</div>
               </div>
             </div>
           </div>
         </section>
 
+        {/* 3-UP: Create + Pulse + Examples (mobile stacks) */}
+        <section className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-12">
+          {/* Create */}
+          <div className="rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5 lg:col-span-6">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">Create decision draft</div>
+                <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">Drafts are editable. Locking is irreversible.</div>
+              </div>
+
+              <Link href="/me" className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white">
+                My cabinet →
+              </Link>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <div>
+                <label className="text-xs font-semibold">Title</label>
+                <input
+                  value={draftTitle}
+                  onChange={(e) => setDraftTitle(e.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-zinc-400/40 dark:border-white/10 dark:bg-black/20"
+                  placeholder="e.g. No social media for 12 months"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold">Commitment statement</label>
+                <textarea
+                  value={draftCommitment}
+                  onChange={(e) => setDraftCommitment(e.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-zinc-400/40 dark:border-white/10 dark:bg-black/20"
+                  rows={4}
+                  placeholder='Example: "I will delete all social media by 2026-02-01 and not return for 12 months."'
+                />
+              </div>
+
+              <button
+                type="button"
+                disabled={busy || !canCreateDraft}
+                onClick={createDraft}
+                className="h-12 w-full rounded-full bg-zinc-900 px-6 text-sm font-semibold text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200 sm:w-auto"
+              >
+                {busy ? "Creating…" : "Create draft →"}
+              </button>
+
+              {toast && (
+                <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-black/20 dark:text-zinc-200">
+                  {toast}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Pulse */}
+          <div className="rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5 lg:col-span-6">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">Pulse</div>
+                <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">Public execution history (immutable).</div>
+              </div>
+              <button
+                type="button"
+                onClick={loadPulse}
+                className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+              >
+                Refresh →
+              </button>
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {[
+                { k: "Locked", v: pulse.locked },
+                { k: "Completed", v: pulse.completed },
+                { k: "Failed", v: pulse.failed },
+                { k: "Due soon (7d)", v: pulse.dueSoon },
+                { k: "Overdue", v: pulse.overdue },
+                { k: "At stake", v: pulse.stakesSum ? `$${money(pulse.stakesSum)}` : "—" },
+              ].map((c) => (
+                <div key={c.k} className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 dark:border-white/10 dark:bg-black/20">
+                  <div className="text-[10px] font-semibold tracking-wide text-zinc-500 dark:text-zinc-400">{c.k.toUpperCase()}</div>
+                  <div className="mt-2 text-2xl font-semibold tracking-tight">{loadingPulse ? "…" : c.v}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-600 dark:border-white/10 dark:bg-black/20 dark:text-zinc-300">
+              Lockpoint does not plan, remind, coach, or motivate. It only records commitment and outcome.
+            </div>
+          </div>
+        </section>
+
         {/* Examples */}
-        <section className="mt-10 rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5">
+        <section className="mt-4 rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5">
           <div className="text-sm font-semibold">Examples</div>
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {EXAMPLES.map((x) => (
-              <div key={x} className="flex gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700 dark:border-white/10 dark:bg-black/20 dark:text-zinc-200">
+              <div
+                key={x}
+                className="flex gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700 dark:border-white/10 dark:bg-black/20 dark:text-zinc-200"
+              >
                 <span className="select-none font-mono text-zinc-400 dark:text-zinc-500">—</span>
                 <span className="min-w-0">{x}</span>
               </div>
@@ -601,200 +567,93 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Create draft */}
-        <section className="mt-10 rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-sm font-semibold">Create decision draft</div>
-              <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-                Drafts are editable. Locking is irreversible.
-              </div>
-            </div>
-
-            <Link
-              href="/me"
-              className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
-            >
-              My cabinet →
-            </Link>
-          </div>
-
-          <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="text-xs font-medium">Title</label>
-              <input
-                value={draftTitle}
-                onChange={(e) => setDraftTitle(e.target.value)}
-                className="mt-2 w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-zinc-400/40 dark:border-white/10 dark:bg-black/20"
-                placeholder="e.g. No social media for 12 months"
-              />
-              {draftTitle.trim().length > 0 && draftTitle.trim().length < 3 && (
-                <div className="mt-1 text-xs text-zinc-500">Minimum 3 characters</div>
-              )}
-            </div>
-
-            <div>
-              <label className="text-xs font-medium">Commitment statement</label>
-              <textarea
-                value={draftCommitment}
-                onChange={(e) => setDraftCommitment(e.target.value)}
-                className="mt-2 w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-zinc-400/40 dark:border-white/10 dark:bg-black/20"
-                rows={3}
-                placeholder='Example: "I will delete all social media by 2026-02-01 and not return for 12 months."'
-              />
-              {draftCommitment.trim().length > 0 && draftCommitment.trim().length < 8 && (
-                <div className="mt-1 text-xs text-zinc-500">Minimum 8 characters</div>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <button
-              type="button"
-              disabled={busy || !canCreateDraft}
-              onClick={createDraft}
-              className="h-12 rounded-full bg-zinc-900 px-6 text-sm font-semibold text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-            >
-              {busy ? "Creating…" : "Create draft →"}
-            </button>
-
-            {toast ? (
-              <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-black/20 dark:text-zinc-200">
-                {toast}
-              </div>
-            ) : (
-              <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                Not signed in? You’ll be redirected to Google.
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* Pulse */}
-        <section className="mt-10 rounded-3xl border border-zinc-200 bg-gradient-to-b from-white to-zinc-50 p-6 dark:border-white/10 dark:from-white/5 dark:to-black/20">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-sm font-semibold">Pulse</div>
-              <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">Public execution history (immutable).</div>
-            </div>
-            <button
-              type="button"
-              onClick={loadPulse}
-              className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
-            >
-              Refresh →
-            </button>
-          </div>
-
-          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-6">
-            {[
-              { k: "Locked", v: pulse.locked },
-              { k: "Completed", v: pulse.completed },
-              { k: "Failed", v: pulse.failed },
-              { k: "Due soon", v: pulse.dueSoon },
-              { k: "Overdue", v: pulse.overdue },
-              { k: "At stake", v: pulse.stakesSum ? `$${money(pulse.stakesSum)}` : "—" },
-            ].map((c) => (
-              <div
-                key={c.k}
-                className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 dark:border-white/10 dark:bg-black/20"
-              >
-                <div className="text-[10px] font-semibold tracking-wide text-zinc-500 dark:text-zinc-400">
-                  {c.k.toUpperCase()}
-                </div>
-                <div className="mt-2 text-2xl font-semibold tracking-tight">
-                  {loadingPulse ? "…" : c.v}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
         {/* Registry */}
-        <section ref={registryRef} className="mt-10 rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5">
+        <section
+          ref={registryRef}
+          className="mt-8 rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5"
+        >
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="text-sm font-semibold">Public Registry</div>
-              <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-                Public records only. Immutable once locked.
-              </div>
+              <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">Public records only. Immutable once locked.</div>
             </div>
-            <Link
-              href="/me"
-              className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
-            >
+            <Link href="/me" className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white">
               My cabinet →
             </Link>
           </div>
 
-          {/* Filters: single row */}
-          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-4">
-            <div className="flex items-center gap-2">
-              <label className="w-20 text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">Status</label>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-                className="h-10 w-full rounded-2xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-white/10 dark:bg-black/20"
-              >
-                <option value="locked">Locked</option>
-                <option value="completed">Completed</option>
-                <option value="failed">Failed</option>
-                <option value="all">All</option>
-              </select>
-            </div>
+          <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-12">
+            <div className="lg:col-span-9">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="flex items-center gap-2">
+                  <label className="w-20 text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">Status</label>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                    className="h-10 w-full rounded-2xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-white/10 dark:bg-black/20"
+                  >
+                    <option value="locked">Locked</option>
+                    <option value="completed">Completed</option>
+                    <option value="failed">Failed</option>
+                    <option value="all">All</option>
+                  </select>
+                </div>
 
-            <div className="flex items-center gap-2">
-              <label className="w-20 text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">Deadline</label>
-              <select
-                value={deadlineFilter}
-                onChange={(e) => setDeadlineFilter(e.target.value as DeadlineFilter)}
-                className="h-10 w-full rounded-2xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-white/10 dark:bg-black/20"
-              >
-                <option value="any">Any</option>
-                <option value="this_week">This week</option>
-                <option value="this_month">This month</option>
-                <option value="expired">Expired</option>
-              </select>
-            </div>
+                <div className="flex items-center gap-2">
+                  <label className="w-20 text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">Deadline</label>
+                  <select
+                    value={deadlineFilter}
+                    onChange={(e) => setDeadlineFilter(e.target.value as DeadlineFilter)}
+                    className="h-10 w-full rounded-2xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-white/10 dark:bg-black/20"
+                  >
+                    <option value="any">Any</option>
+                    <option value="this_week">This week</option>
+                    <option value="this_month">This month</option>
+                    <option value="expired">Expired</option>
+                  </select>
+                </div>
 
-            <div className="flex items-center gap-2">
-              <label className="w-20 text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">Sort</label>
-              <select
-                value={sortMode}
-                onChange={(e) => setSortMode(e.target.value as SortMode)}
-                className="h-10 w-full rounded-2xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-white/10 dark:bg-black/20"
-              >
-                <option value="newest">Newest</option>
-                <option value="recently_locked">Recently locked</option>
-                <option value="deadline">Deadline first</option>
-              </select>
-            </div>
-
-            <div className="flex items-center justify-between gap-2 rounded-2xl border border-zinc-200 bg-white px-4 py-2 dark:border-white/10 dark:bg-black/20">
-              <div>
-                <div className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">Stake</div>
-                <div className="text-[11px] text-zinc-500 dark:text-zinc-400">Only records with stake</div>
+                <div className="flex items-center gap-2">
+                  <label className="w-20 text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">Sort</label>
+                  <select
+                    value={sortMode}
+                    onChange={(e) => setSortMode(e.target.value as SortMode)}
+                    className="h-10 w-full rounded-2xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-white/10 dark:bg-black/20"
+                  >
+                    <option value="newest">Newest</option>
+                    <option value="recently_locked">Recently locked</option>
+                    <option value="deadline">Deadline first</option>
+                  </select>
+                </div>
               </div>
+            </div>
+
+            <div className="lg:col-span-3">
               <button
                 type="button"
                 onClick={() => setWithStakeOnly((v) => !v)}
-                className={`h-8 w-14 rounded-full border px-1 transition ${
-                  withStakeOnly
-                    ? "border-zinc-900 bg-zinc-900 dark:border-white dark:bg-white"
-                    : "border-zinc-200 bg-zinc-50 dark:border-white/10 dark:bg-black/20"
-                }`}
+                className={cx(
+                  "flex h-10 w-full items-center justify-between rounded-2xl border px-4 text-sm font-semibold",
+                  "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50",
+                  "dark:border-white/10 dark:bg-black/20 dark:text-zinc-200 dark:hover:bg-white/5"
+                )}
                 aria-pressed={withStakeOnly}
               >
+                <span>Stake only</span>
                 <span
-                  className={`block h-6 w-6 rounded-full bg-white transition dark:bg-black ${
-                    withStakeOnly ? "translate-x-6" : "translate-x-0"
-                  }`}
-                />
+                  className={cx(
+                    "inline-flex h-6 w-11 items-center rounded-full border px-1 transition",
+                    withStakeOnly
+                      ? "border-zinc-900 bg-zinc-900 dark:border-white dark:bg-white"
+                      : "border-zinc-200 bg-zinc-50 dark:border-white/10 dark:bg-black/20"
+                  )}
+                >
+                  <span className={cx("h-4 w-4 rounded-full bg-white transition dark:bg-black", withStakeOnly ? "translate-x-5" : "translate-x-0")} />
+                </span>
               </button>
             </div>
           </div>
 
-          {/* List */}
           <div className="mt-6 space-y-3">
             {loadingList ? (
               <div className="text-sm text-zinc-600 dark:text-zinc-300">Loading…</div>
@@ -812,41 +671,18 @@ export default function Home() {
                       <div className="truncate text-sm font-semibold">{t.title}</div>
 
                       <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-zinc-600 dark:text-zinc-300 sm:grid-cols-2">
-                        <div>
-                          <span className="font-mono text-zinc-500 dark:text-zinc-400">{shortId(t.id)}</span>
+                        <div className="font-mono text-zinc-500 dark:text-zinc-400">{shortId(t.id)}</div>
+
+                        <div className="sm:text-right text-zinc-500 dark:text-zinc-400">
+                          {t.locked_at ? `Locked ${fmtPrettyDate(t.locked_at)}` : `Created ${fmtPrettyDate(t.created_at)}`}
                         </div>
 
-                        <div className="sm:text-right">
-                          {t.locked_at ? (
-                            <span className="text-zinc-500 dark:text-zinc-400">
-                              Locked {fmtPrettyDate(t.locked_at)}
-                            </span>
-                          ) : (
-                            <span className="text-zinc-500 dark:text-zinc-400">
-                              Created {fmtPrettyDate(t.created_at)}
-                            </span>
-                          )}
+                        <div className="text-zinc-500 dark:text-zinc-400">
+                          {t.deadline_at ? `Deadline ${fmtPrettyDate(t.deadline_at)}` : "No deadline"}
                         </div>
 
-                        <div>
-                          {t.deadline_at ? (
-                            <span className="text-zinc-500 dark:text-zinc-400">
-                              Deadline {fmtPrettyDate(t.deadline_at)}
-                            </span>
-                          ) : (
-                            <span className="text-zinc-500 dark:text-zinc-400">No deadline</span>
-                          )}
-                        </div>
-
-                        <div className="sm:text-right">
-                          {t.stake_amount != null ? (
-                            <span className="text-zinc-500 dark:text-zinc-400">
-                              Stake {t.stake_amount}
-                              {t.stake_currency ? ` ${t.stake_currency}` : ""}
-                            </span>
-                          ) : (
-                            <span className="text-zinc-500 dark:text-zinc-400">No stake</span>
-                          )}
+                        <div className="sm:text-right text-zinc-500 dark:text-zinc-400">
+                          {t.stake_amount != null ? `Stake ${t.stake_amount}${t.stake_currency ? ` ${t.stake_currency}` : ""}` : "No stake"}
                         </div>
                       </div>
                     </div>
@@ -863,7 +699,6 @@ export default function Home() {
             )}
           </div>
 
-          {/* Pagination */}
           <div className="mt-6 flex items-center justify-between">
             <button
               type="button"
@@ -887,24 +722,33 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Philosophy CTA */}
-        <section className="mt-10 rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5">
+        {/* Why irreversible */}
+        <section className="mt-8 rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5">
           <div className="text-sm font-semibold">Why irreversible?</div>
-          <div className="mt-3 space-y-2 text-sm text-zinc-700 dark:text-zinc-200">
-            <p>Because editability kills seriousness.</p>
-            <p>Because public memory creates pressure.</p>
-            <p>Because unfinished intentions disappear.</p>
+          <div className="mt-3 grid grid-cols-1 gap-3 text-sm text-zinc-700 dark:text-zinc-200 sm:grid-cols-3">
+            <div className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-black/20">
+              <div className="font-semibold">Editability kills seriousness</div>
+              <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">If it can be rewritten, it was never real.</div>
+            </div>
+            <div className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-black/20">
+              <div className="font-semibold">Public memory creates pressure</div>
+              <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">Your future self inherits your past.</div>
+            </div>
+            <div className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-black/20">
+              <div className="font-semibold">Outcomes don’t disappear</div>
+              <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">Failure is recorded, not hidden.</div>
+            </div>
           </div>
         </section>
 
         {/* Feedback */}
-        <section className="mt-10 rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5">
+        <section className="mt-8 rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5">
           <div className="text-sm font-semibold">Feedback</div>
           <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">Tell me what broke or what you want next.</div>
 
           <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="text-xs font-medium">Email (optional)</label>
+              <label className="text-xs font-semibold">Email (optional)</label>
               <input
                 value={fbEmail}
                 onChange={(e) => setFbEmail(e.target.value)}
@@ -914,7 +758,7 @@ export default function Home() {
             </div>
 
             <div className="sm:col-span-2">
-              <label className="text-xs font-medium">Message</label>
+              <label className="text-xs font-semibold">Message</label>
               <textarea
                 value={fbMsg}
                 onChange={(e) => setFbMsg(e.target.value)}
@@ -935,39 +779,9 @@ export default function Home() {
               {fbSending ? "Sending…" : "Send feedback →"}
             </button>
 
-            <div className="text-xs text-zinc-500 dark:text-zinc-400">
-              Replies go to your inbox via Resend (API).
-            </div>
+            {/* no “Replies go…” text */}
           </div>
         </section>
-
-        {/* Footer nav */}
-        <footer className="mt-12 border-t border-zinc-200 pt-6 text-xs text-zinc-500 dark:border-white/10 dark:text-zinc-400">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <Link href="/onboarding" className="hover:text-zinc-900 dark:hover:text-white">
-              What is Lockpoint
-            </Link>
-            <Link href="/roadmap" className="hover:text-zinc-900 dark:hover:text-white">
-              Roadmap
-            </Link>
-            <Link href="/faq" className="hover:text-zinc-900 dark:hover:text-white">
-              FAQ
-            </Link>
-            <Link href="/terms" className="hover:text-zinc-900 dark:hover:text-white">
-              Terms
-            </Link>
-            <Link href="/privacy" className="hover:text-zinc-900 dark:hover:text-white">
-              Privacy
-            </Link>
-            <Link href="/disclaimer" className="hover:text-zinc-900 dark:hover:text-white">
-              Disclaimer
-            </Link>
-          </div>
-
-          <div className="mt-3">
-            Lockpoint does not plan, remind, coach, or motivate. It only records commitment and outcome.
-          </div>
-        </footer>
       </main>
     </div>
   );
