@@ -394,7 +394,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
-      <Header userId={userId} userEmail={userEmail} onSignIn={signIn} onSignOut={signOut} onGoRegistry={scrollToRegistry} />
+      <Header userId={userId} userEmail={userEmail} onSignIn={signIn} onSignOut={signOut} />
 
       <main className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
         {/* HERO */}
