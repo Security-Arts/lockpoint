@@ -453,7 +453,7 @@ export default function Home() {
 
           <div className="relative grid grid-cols-1 gap-8 lg:grid-cols-12 lg:items-start">
             <div className="lg:col-span-8">
-              <h1 className="text-2xl font-semibold tracking-tight sm:text-5xl">Make a decision you cannot walk back.</h1>
+              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Make a decision you cannot walk back.</h1>
 
               <p className="mt-3 text-sm font-semibold text-zinc-800 dark:text-zinc-100">
                 Public. Permanent. Outcome recorded.
