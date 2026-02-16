@@ -430,9 +430,9 @@ export default function Home() {
 
   const whatYouGet = [
     { t: "A public deadline", d: "A date you can’t quietly move." },
-    { t: "A permanent record", d: "No edits after lock." },
-    { t: "A visible execution history", d: "Follow-through becomes trackable." },
-    { t: "Reputation based on outcomes", d: "Completed / Failed is public." },
+    { t: "A permanent record", d: "No rewrites. No erasing" },
+    { t: "A visible execution history", d: "Your follow-through becomes visible." },
+    { t: "Reputation based on outcomes", d: "Completion and failure both count." },
   ];
 
   return (
