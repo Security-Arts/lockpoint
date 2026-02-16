@@ -436,7 +436,7 @@ export default function Home() {
   ];
 
   return (
-    <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
+    <div className="bg-transparent font-sans text-zinc-900 dark:text-zinc-50">
       <Header
         userId={userId}
         userEmail={userEmail}
@@ -445,7 +445,8 @@ export default function Home() {
         onGoRegistry={scrollToRegistry}
       />
 
-      <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
+      <main className="mx-auto w-full max-w-6xl px-4 pt-10 pb-0 sm:px-6 sm:pt-14 sm:pb-0">
+
         {/* HERO */}
         <section className="relative overflow-hidden rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5 sm:p-10">
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-zinc-50 to-white dark:from-white/5 dark:to-black/30" />
