@@ -453,18 +453,18 @@ export default function Home() {
 
           <div className="relative grid grid-cols-1 gap-8 lg:grid-cols-12 lg:items-start">
             <div className="lg:col-span-8">
-              <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Make a decision you cannot edit.</h1>
+              <h1 className="text-2xl font-semibold tracking-tight sm:text-5xl">Make a decision you cannot walk back.</h1>
 
               <p className="mt-3 text-sm font-semibold text-zinc-800 dark:text-zinc-100">
                 Public. Permanent. Outcome recorded.
               </p>
 
               <p className="mt-4 max-w-2xl text-sm leading-relaxed text-zinc-700 dark:text-zinc-200">
-                Lockpoint is a public registry for locked commitments. Once locked, the record stays — you can only add outcomes later.
+                Lockpoint is a public registry for irreversible commitments. Once locked, the record stays. Only outcomes can be added.
               </p>
 
               <div className="mt-5 max-w-2xl text-sm text-zinc-600 dark:text-zinc-300">
-                Over time, consistent execution becomes a form of capital — a measurable public reliability signal.
+                Over time, consistent execution becomes capital - a measurable public reliability signal.
               </div>
 
               <div className="mt-6 flex flex-wrap gap-2">
