@@ -467,7 +467,7 @@ export default function Home() {
                   href="/me"
                   className="inline-flex h-12 w-full items-center justify-center rounded-full bg-zinc-900 px-6 text-sm font-semibold text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200 lg:w-auto"
                 >
-                  Create a commitment →
+                  My commitments →
                 </Link>
 
                 <button
