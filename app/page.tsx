@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import Header from "@/components/Header";
 
@@ -143,6 +144,7 @@ type Pulse = {
 };
 
 export default function Home() {
+  const router = useRouter();
   const registryRef = useRef<HTMLDivElement | null>(null);
 
   const [busy, setBusy] = useState(false);
@@ -215,9 +217,11 @@ export default function Home() {
 
   async function signIn() {
     setToast(null);
+    // ✅ always land back on "/" after auth, so the flow can continue
+    const next = typeof window !== "undefined" ? window.location.href : `${window.location.origin}/`;
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/me` },
+      options: { redirectTo: next },
     });
   }
 
@@ -234,7 +238,11 @@ export default function Home() {
       const [lockedR, completedR, droppedR] = await Promise.all([
         base.eq("status", "locked"),
         base.eq("status", "completed"),
-        supabase.from("trajectories").select("id", { count: "exact", head: true }).eq("is_public", true).in("status", ["dropped", "failed"]),
+        supabase
+          .from("trajectories")
+          .select("id", { count: "exact", head: true })
+          .eq("is_public", true)
+          .in("status", ["dropped", "failed"]),
       ]);
 
       const todayIso = getStartOfTodayISO();
@@ -368,10 +376,13 @@ export default function Home() {
       return;
     }
 
-    setToast(`Draft created: ${shortId(data.id)} — go to My commitments to lock it.`);
+    // ✅ WOW FLOW:
+    // 1) Clear fields instantly
+    // 2) Jump straight into /me with the lock modal auto-opened for this draft
     setDraftTitle("");
     setDraftCommitment("");
     setBusy(false);
+    router.push(`/me?new=${encodeURIComponent(data.id)}&autolock=1`);
   }
 
   async function sendFeedback() {
@@ -413,16 +424,9 @@ export default function Home() {
 
   return (
     <div className="bg-transparent font-sans text-zinc-900 dark:text-zinc-50">
-      <Header
-        userId={userId}
-        userEmail={userEmail}
-        onSignIn={signIn}
-        onSignOut={signOut}
-        onGoRegistry={scrollToRegistry}
-      />
+      <Header userId={userId} userEmail={userEmail} onSignIn={signIn} onSignOut={signOut} onGoRegistry={scrollToRegistry} />
 
       <main className="mx-auto w-full max-w-6xl px-4 pt-10 pb-0 sm:px-6 sm:pt-14 sm:pb-0">
-
         {/* HERO */}
         <section className="relative overflow-hidden rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5 sm:p-10">
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-zinc-50 to-white dark:from-white/5 dark:to-black/30" />
@@ -431,9 +435,7 @@ export default function Home() {
             <div className="lg:col-span-8">
               <h1 className="text-3xl font-semibold tracking-tight sm:text-2xl">Lock a commitment. The record stays.</h1>
 
-              <p className="mt-3 text-sm font-semibold text-zinc-800 dark:text-zinc-100">
-                Public. Permanent. Outcome recorded.
-              </p>
+              <p className="mt-3 text-sm font-semibold text-zinc-800 dark:text-zinc-100">Public. Permanent. Outcome recorded.</p>
 
               <p className="mt-4 max-w-2xl text-sm leading-relaxed text-zinc-700 dark:text-zinc-200">
                 Lockpoint is a public registry for irreversible commitments. Once locked, the original record cannot be edited or deleted. Only outcomes can be appended after.
@@ -455,9 +457,15 @@ export default function Home() {
               </div>
 
               <div className="mt-6 flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-                <Link href="/terms" className="hover:text-zinc-900 dark:hover:text-white">Terms</Link>
-                <Link href="/privacy" className="hover:text-zinc-900 dark:hover:text-white">Privacy</Link>
-                <Link href="/disclaimer" className="hover:text-zinc-900 dark:hover:text-white">Disclaimer</Link>
+                <Link href="/terms" className="hover:text-zinc-900 dark:hover:text-white">
+                  Terms
+                </Link>
+                <Link href="/privacy" className="hover:text-zinc-900 dark:hover:text-white">
+                  Privacy
+                </Link>
+                <Link href="/disclaimer" className="hover:text-zinc-900 dark:hover:text-white">
+                  Disclaimer
+                </Link>
               </div>
             </div>
 
@@ -478,24 +486,19 @@ export default function Home() {
                   View registry
                 </button>
 
-                <div className="text-center text-[11px] text-zinc-500 dark:text-zinc-400 lg:text-right">
-                  Drafts → Lock → Outcomes
-                </div>
+                <div className="text-center text-[11px] text-zinc-500 dark:text-zinc-400 lg:text-right">Drafts → Lock → Outcomes</div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* WHY PERMANENCE — directly after hero */}
+        {/* WHY PERMANENCE */}
         <section className="mt-6 rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5">
           <div className="text-sm font-semibold">Why permanence works.</div>
 
           <div className="mt-3 grid grid-cols-1 gap-3 text-sm text-zinc-700 dark:text-zinc-200 sm:grid-cols-2 lg:grid-cols-3">
             {whyPermanence.map((x) => (
-              <div
-                key={x.t}
-                className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-black/20"
-              >
+              <div key={x.t} className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-black/20">
                 <div className="font-semibold">{x.t}</div>
                 <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">{x.d}</div>
               </div>
@@ -510,14 +513,9 @@ export default function Home() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold">Create a commitment draft</div>
-                <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-                  Drafts are editable. Locking is irreversible.
-                </div>
+                <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">Drafts are editable. Locking is irreversible.</div>
               </div>
-              <Link
-                href="/me"
-                className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
-              >
+              <Link href="/me" className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white">
                 My commitments →
               </Link>
             </div>
@@ -559,28 +557,24 @@ export default function Home() {
                     {toast}
                   </div>
                 ) : (
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                    Not signed in? You'll be redirected to Google.
-                  </div>
+                  <div className="text-xs text-zinc-500 dark:text-zinc-400">Not signed in? You'll be redirected to Google.</div>
                 )}
+              </div>
+
+              <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                After creation, you’ll jump to <span className="font-mono">/me</span> with the lock modal auto-opened.
               </div>
             </div>
           </div>
 
-          {/* Registry Activity (was Pulse) */}
+          {/* Registry Activity */}
           <div className="rounded-3xl border border-zinc-200 bg-white p-6 dark:border-white/10 dark:bg-white/5 lg:col-span-6">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold">Registry activity</div>
-                <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-                  Live counts across all public records.
-                </div>
+                <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">Live counts across all public records.</div>
               </div>
-              <button
-                type="button"
-                onClick={loadPulse}
-                className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
-              >
+              <button type="button" onClick={loadPulse} className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white">
                 Refresh →
               </button>
             </div>
@@ -594,13 +588,8 @@ export default function Home() {
                 { k: "Overdue", v: pulse.overdue },
                 { k: "At stake", v: pulse.stakesSum ? `$${money(pulse.stakesSum)}` : "—" },
               ].map((c) => (
-                <div
-                  key={c.k}
-                  className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 dark:border-white/10 dark:bg-black/20"
-                >
-                  <div className="text-[10px] font-semibold tracking-wide text-zinc-500 dark:text-zinc-400">
-                    {c.k.toUpperCase()}
-                  </div>
+                <div key={c.k} className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 dark:border-white/10 dark:bg-black/20">
+                  <div className="text-[10px] font-semibold tracking-wide text-zinc-500 dark:text-zinc-400">{c.k.toUpperCase()}</div>
                   <div className="mt-2 text-2xl font-semibold tracking-tight">{loadingPulse ? "…" : c.v}</div>
                 </div>
               ))}
@@ -617,10 +606,7 @@ export default function Home() {
           <div className="text-sm font-semibold">Examples</div>
           <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {EXAMPLES.map((x) => (
-              <div
-                key={x}
-                className="flex gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700 dark:border-white/10 dark:bg-black/20 dark:text-zinc-200"
-              >
+              <div key={x} className="flex gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700 dark:border-white/10 dark:bg-black/20 dark:text-zinc-200">
                 <span className="select-none font-mono text-zinc-400 dark:text-zinc-500">—</span>
                 <span className="min-w-0">{x}</span>
               </div>
@@ -633,14 +619,9 @@ export default function Home() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="text-sm font-semibold">Public Registry</div>
-              <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-                Public records only. Immutable once locked.
-              </div>
+              <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">Public records only. Immutable once locked.</div>
             </div>
-            <Link
-              href="/me"
-              className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
-            >
+            <Link href="/me" className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white">
               My commitments →
             </Link>
           </div>
@@ -706,17 +687,10 @@ export default function Home() {
                 <span
                   className={cx(
                     "inline-flex h-6 w-11 items-center rounded-full border px-1 transition",
-                    withStakeOnly
-                      ? "border-zinc-900 bg-zinc-900 dark:border-white dark:bg-white"
-                      : "border-zinc-200 bg-zinc-50 dark:border-white/10 dark:bg-black/20"
+                    withStakeOnly ? "border-zinc-900 bg-zinc-900 dark:border-white dark:bg-white" : "border-zinc-200 bg-zinc-50 dark:border-white/10 dark:bg-black/20"
                   )}
                 >
-                  <span
-                    className={cx(
-                      "h-4 w-4 rounded-full bg-white transition dark:bg-black",
-                      withStakeOnly ? "translate-x-5" : "translate-x-0"
-                    )}
-                  />
+                  <span className={cx("h-4 w-4 rounded-full bg-white transition dark:bg-black", withStakeOnly ? "translate-x-5" : "translate-x-0")} />
                 </span>
               </button>
             </div>
@@ -744,13 +718,9 @@ export default function Home() {
                           <div className="sm:text-right text-zinc-500 dark:text-zinc-400">
                             {t.locked_at ? `Locked ${fmtPrettyDate(t.locked_at)}` : `Created ${fmtPrettyDate(t.created_at)}`}
                           </div>
-                          <div className="text-zinc-500 dark:text-zinc-400">
-                            {t.deadline_at ? `Deadline ${fmtPrettyDate(t.deadline_at)}` : "No deadline"}
-                          </div>
+                          <div className="text-zinc-500 dark:text-zinc-400">{t.deadline_at ? `Deadline ${fmtPrettyDate(t.deadline_at)}` : "No deadline"}</div>
                           <div className="sm:text-right text-zinc-500 dark:text-zinc-400">
-                            {t.stake_amount != null
-                              ? `Stake ${t.stake_amount}${t.stake_currency ? ` ${t.stake_currency}` : ""}`
-                              : "No stake"}
+                            {t.stake_amount != null ? `Stake ${t.stake_amount}${t.stake_currency ? ` ${t.stake_currency}` : ""}` : "No stake"}
                           </div>
                         </div>
                       </div>
