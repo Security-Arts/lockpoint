@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import ShareBar from "@/components/ShareBar";
 
@@ -46,12 +47,9 @@ function norm(s?: string | null) {
   return String(s ?? "").toLowerCase();
 }
 
-async function signOut() {
-  await supabase.auth.signOut();
-  window.location.href = "/";
-}
-
 export default function MyCabinetPage() {
+  const router = useRouter();
+
   const [items, setItems] = useState<Trajectory[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
@@ -137,17 +135,26 @@ export default function MyCabinetPage() {
     return okWord && len >= amendMinLen;
   }, [amendConfirm, amendBody, amendMinLen]);
 
+  async function ensureSignedInOrRedirect() {
+    const { data: s, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    const uid = s.session?.user?.id;
+    if (!uid) {
+      router.replace("/");
+      return null;
+    }
+    return uid;
+  }
+
   async function loadMine() {
     setLoading(true);
     setToast(null);
 
     try {
-      const { data: s, error: sErr } = await supabase.auth.getSession();
-      if (sErr) throw sErr;
-      const uid = s.session?.user?.id;
-
+      const uid = await ensureSignedInOrRedirect();
       if (!uid) {
         setItems([]);
+        setLoading(false);
         return;
       }
 
@@ -168,6 +175,11 @@ export default function MyCabinetPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function signOut() {
+    await supabase.auth.signOut();
+    window.location.href = "/";
   }
 
   useEffect(() => {
@@ -490,25 +502,19 @@ export default function MyCabinetPage() {
                         {t.deadline_at ? (
                           <>
                             {" · "}
-                            <span className="text-zinc-500 dark:text-zinc-400">
-                              deadline {fmtDate(t.deadline_at)}
-                            </span>
+                            <span className="text-zinc-500 dark:text-zinc-400">deadline {fmtDate(t.deadline_at)}</span>
                           </>
                         ) : null}
                         {t.locked_at ? (
                           <>
                             {" · "}
-                            <span className="text-zinc-500 dark:text-zinc-400">
-                              locked {fmtDate(t.locked_at)}
-                            </span>
+                            <span className="text-zinc-500 dark:text-zinc-400">locked {fmtDate(t.locked_at)}</span>
                           </>
                         ) : null}
                         {t.dropped_at ? (
                           <>
                             {" · "}
-                            <span className="text-zinc-600 dark:text-zinc-300">
-                              dropped {fmtDate(t.dropped_at)}
-                            </span>
+                            <span className="text-zinc-600 dark:text-zinc-300">dropped {fmtDate(t.dropped_at)}</span>
                           </>
                         ) : null}
                       </div>
@@ -836,7 +842,9 @@ export default function MyCabinetPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-lg font-semibold">Add amendment</div>
-                  <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">Amendments are immutable. They extend the record.</div>
+                  <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+                    Amendments are immutable. They extend the record.
+                  </div>
                 </div>
                 <button
                   type="button"
