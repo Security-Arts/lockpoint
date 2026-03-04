@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import ShareBar from "@/components/ShareBar";
 
 type Trajectory = {
   id: string;
@@ -44,6 +45,7 @@ function fmtDate(iso?: string | null) {
 function norm(s?: string | null) {
   return String(s ?? "").toLowerCase();
 }
+
 async function signOut() {
   await supabase.auth.signOut();
   window.location.href = "/";
@@ -71,6 +73,14 @@ export default function MyCabinetPage() {
   const [stakePreset, setStakePreset] = useState<number | null>(null);
   const [stakeCustom, setStakeCustom] = useState<string>("");
 
+  // ✅ post-lock share state (inside modal)
+  const [justLocked, setJustLocked] = useState<{ id: string; title: string } | null>(null);
+
+  const origin = useMemo(() => {
+    if (typeof window === "undefined") return "https://lockpoint.app";
+    return window.location.origin;
+  }, []);
+
   // Amend modal
   const [amendOpen, setAmendOpen] = useState(false);
   const [amendTrajectoryId, setAmendTrajectoryId] = useState<string | null>(null);
@@ -93,9 +103,7 @@ export default function MyCabinetPage() {
           ? status === "locked"
           : status === "completed" || status === "failed";
 
-      const matchQuery = !query
-        ? true
-        : `${t.title ?? ""} ${t.commitment ?? ""}`.toLowerCase().includes(query);
+      const matchQuery = !query ? true : `${t.title ?? ""} ${t.commitment ?? ""}`.toLowerCase().includes(query);
 
       return matchFilter && matchQuery;
     });
@@ -182,6 +190,8 @@ export default function MyCabinetPage() {
 
   function openLockModal(t: Trajectory) {
     setToast(null);
+    setJustLocked(null);
+
     setLockId(t.id);
     setLockOpen(true);
     setLockLoading(false);
@@ -253,17 +263,17 @@ export default function MyCabinetPage() {
       return;
     }
 
-    // ✅ share-loop: copy link after lock
+    // ✅ after lock: show share UI inside modal (don’t close it)
+    const url = `${origin}/t/${lockId}`;
+    setJustLocked({ id: lockId, title });
+
     try {
-      const url = `${window.location.origin}/t/${lockId}`;
       await navigator.clipboard.writeText(url);
-      setToast("LOCKED · public link copied.");
+      setToast("LOCKED · link copied. Share it now.");
     } catch {
-      setToast("LOCKED.");
+      setToast("LOCKED. Share it now.");
     }
 
-    setLockOpen(false);
-    setLockId(null);
     setLockLoading(false);
     await loadMine();
   }
@@ -368,355 +378,420 @@ export default function MyCabinetPage() {
   }
 
   return (
-         <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
-        <main className="mx-auto w-full max-w-3xl px-6 py-16">
-       <div className="flex items-start justify-between gap-3">
-  <div>
-    <h1 className="text-2xl font-semibold tracking-tight">My commitments</h1>
-    <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
-      Your drafts and locked commitments. Locked records are visible to anyone.
-    </p>
-  </div>
-
-  <div className="flex gap-2">
-    <Link
-      href="/"
-      className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-4 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-    >
-      ← Home
-    </Link>
-
-    <button
-      onClick={signOut}
-      className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-4 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-    >
-      Sign out
-    </button>
-  </div>
-</div>
-
-          {/* controls */}
-          <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Search your commitments…"
-                className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-              />
-
-              <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value as any)}
-                className="h-10 w-full sm:w-56 rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-              >
-                <option value="all">All</option>
-                <option value="draft">Drafts</option>
-                <option value="locked">Locked</option>
-                <option value="final">Resolved</option>
-              </select>
-            </div>
-
-            <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-              Showing {filtered.length} of {items.length}.
-            </div>
+    <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
+      <main className="mx-auto w-full max-w-3xl px-6 py-16">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">My commitments</h1>
+            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+              Your drafts and locked commitments. Locked records are visible to anyone.
+            </p>
           </div>
 
-          {/* list */}
-          <div className="mt-6 space-y-2">
-            {loading ? (
-              <div className="text-sm text-zinc-600 dark:text-zinc-300">Loading…</div>
-            ) : filtered.length === 0 ? (
-              items.length === 0 ? (
-                <div className="rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
-                  <div className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">No commitments yet.</div>
-                  <div className="mt-2 text-xs text-zinc-600 dark:text-zinc-300">
-                    Write your first draft — you can edit it freely before locking.
-                  </div>
+          <div className="flex gap-2">
+            <Link
+              href="/"
+              className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-4 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+            >
+              ← Home
+            </Link>
+
+            <button
+              onClick={signOut}
+              className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-4 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
+
+        {/* controls */}
+        <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search your commitments…"
+              className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+            />
+
+            <select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value as any)}
+              className="h-10 w-full sm:w-56 rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+            >
+              <option value="all">All</option>
+              <option value="draft">Drafts</option>
+              <option value="locked">Locked</option>
+              <option value="final">Resolved</option>
+            </select>
+          </div>
+
+          <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+            Showing {filtered.length} of {items.length}.
+          </div>
+        </div>
+
+        {/* list */}
+        <div className="mt-6 space-y-2">
+          {loading ? (
+            <div className="text-sm text-zinc-600 dark:text-zinc-300">Loading…</div>
+          ) : filtered.length === 0 ? (
+            items.length === 0 ? (
+              <div className="rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+                <div className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">No commitments yet.</div>
+                <div className="mt-2 text-xs text-zinc-600 dark:text-zinc-300">
+                  Write your first draft — you can edit it freely before locking.
                 </div>
-              ) : (
-                <div className="text-sm text-zinc-600 dark:text-zinc-300">No records found.</div>
-              )
+              </div>
             ) : (
-              filtered.map((t) => {
-                const status = norm(t.status);
-                const isLocked = status === "locked" || !!t.locked_at;
-                const isFinal = status === "completed" || status === "failed";
-                const isDraft = status === "draft" && !t.locked_at;
-                const isDroppedDraft = isDraft && !!t.dropped_at;
+              <div className="text-sm text-zinc-600 dark:text-zinc-300">No records found.</div>
+            )
+          ) : (
+            filtered.map((t) => {
+              const status = norm(t.status);
+              const isLocked = status === "locked" || !!t.locked_at;
+              const isFinal = status === "completed" || status === "failed";
+              const isDraft = status === "draft" && !t.locked_at;
+              const isDroppedDraft = isDraft && !!t.dropped_at;
 
-                return (
-                  <div
-                    key={t.id}
-                    className={[
-                      "rounded-xl border px-3 py-3",
-                      isFinal || isLocked
-                        ? "border-zinc-300 bg-zinc-50 dark:border-white/15 dark:bg-white/5"
-                        : "border-zinc-200 bg-white dark:border-white/10 dark:bg-black/20",
-                    ].join(" ")}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div className="text-sm font-semibold truncate">{t.title}</div>
-                          {t.is_public ? (
-                            <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
-                              PUBLIC
-                            </span>
-                          ) : null}
-                          {isDroppedDraft ? (
-                            <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
-                              DROPPED
-                            </span>
-                          ) : null}
-                        </div>
-
-                        <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-                          <span className="font-mono">{shortId(t.id)}</span>
-                          {" · "}
-                          <span className="uppercase tracking-wide">{status || "—"}</span>
-                          {" · "}
-                          <span className="text-zinc-500 dark:text-zinc-400">
-                            created {fmtDate(t.created_at)}
+              return (
+                <div
+                  key={t.id}
+                  className={[
+                    "rounded-xl border px-3 py-3",
+                    isFinal || isLocked
+                      ? "border-zinc-300 bg-zinc-50 dark:border-white/15 dark:bg-white/5"
+                      : "border-zinc-200 bg-white dark:border-white/10 dark:bg-black/20",
+                  ].join(" ")}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-semibold truncate">{t.title}</div>
+                        {t.is_public ? (
+                          <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
+                            PUBLIC
                           </span>
-                          {t.deadline_at ? (
-                            <>
-                              {" · "}
-                              <span className="text-zinc-500 dark:text-zinc-400">
-                                deadline {fmtDate(t.deadline_at)}
-                              </span>
-                            </>
-                          ) : null}
-                          {t.locked_at ? (
-                            <>
-                              {" · "}
-                              <span className="text-zinc-500 dark:text-zinc-400">
-                                locked {fmtDate(t.locked_at)}
-                              </span>
-                            </>
-                          ) : null}
-                          {t.dropped_at ? (
-                            <>
-                              {" · "}
-                              <span className="text-zinc-600 dark:text-zinc-300">
-                                dropped {fmtDate(t.dropped_at)}
-                              </span>
-                            </>
-                          ) : null}
-                        </div>
-
-                        {t.commitment ? (
-                          <div className="mt-2 text-xs text-zinc-600 dark:text-zinc-300">
-                            <span className="font-medium text-zinc-700 dark:text-zinc-200">
-                              commitment:
-                            </span>{" "}
-                            {t.commitment}
-                          </div>
+                        ) : null}
+                        {isDroppedDraft ? (
+                          <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
+                            DROPPED
+                          </span>
                         ) : null}
                       </div>
 
-                      <div className="flex flex-col items-end gap-2">
-                        <Link
-                          href={`/t/${t.id}`}
-                          className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-                          title="Open"
-                        >
-                          Open
-                        </Link>
+                      <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+                        <span className="font-mono">{shortId(t.id)}</span>
+                        {" · "}
+                        <span className="uppercase tracking-wide">{status || "—"}</span>
+                        {" · "}
+                        <span className="text-zinc-500 dark:text-zinc-400">created {fmtDate(t.created_at)}</span>
+                        {t.deadline_at ? (
+                          <>
+                            {" · "}
+                            <span className="text-zinc-500 dark:text-zinc-400">
+                              deadline {fmtDate(t.deadline_at)}
+                            </span>
+                          </>
+                        ) : null}
+                        {t.locked_at ? (
+                          <>
+                            {" · "}
+                            <span className="text-zinc-500 dark:text-zinc-400">
+                              locked {fmtDate(t.locked_at)}
+                            </span>
+                          </>
+                        ) : null}
+                        {t.dropped_at ? (
+                          <>
+                            {" · "}
+                            <span className="text-zinc-600 dark:text-zinc-300">
+                              dropped {fmtDate(t.dropped_at)}
+                            </span>
+                          </>
+                        ) : null}
+                      </div>
 
-                        {isDraft && !isDroppedDraft ? (
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              className="inline-flex h-9 items-center justify-center rounded-full bg-zinc-900 px-3 text-xs font-semibold text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-                              onClick={() => openLockModal(t)}
-                            >
-                              LOCK
-                            </button>
+                      {t.commitment ? (
+                        <div className="mt-2 text-xs text-zinc-600 dark:text-zinc-300">
+                          <span className="font-medium text-zinc-700 dark:text-zinc-200">commitment:</span>{" "}
+                          {t.commitment}
+                        </div>
+                      ) : null}
+                    </div>
 
-                            <button
-                              type="button"
-                              className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-                              onClick={() => {
-                                if (window.confirm("Drop this draft? It will be removed from your list.")) {
-                                  dropDraft(t);
-                                }
-                              }}
-                            >
-                              DROP
-                            </button>
-                          </div>
-                        ) : isLocked && !isFinal ? (
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-                              onClick={() => openAmendModal(t, "MILESTONE")}
-                            >
-                              AMEND
-                            </button>
-                            <button
-                              type="button"
-                              className="inline-flex h-9 items-center justify-center rounded-full bg-zinc-900 px-3 text-xs font-semibold text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-                              onClick={() => openAmendModal(t, "OUTCOME")}
-                            >
-                              OUTCOME
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="text-[11px] text-zinc-500 dark:text-zinc-400 text-right">
-                            {isFinal ? "Finalized." : isDroppedDraft ? "Dropped." : "—"}
-                          </div>
-                        )}
+                    <div className="flex flex-col items-end gap-2">
+                      <Link
+                        href={`/t/${t.id}`}
+                        className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                        title="Open"
+                      >
+                        Open
+                      </Link>
+
+                      {isDraft && !isDroppedDraft ? (
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            className="inline-flex h-9 items-center justify-center rounded-full bg-zinc-900 px-3 text-xs font-semibold text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                            onClick={() => openLockModal(t)}
+                          >
+                            LOCK
+                          </button>
+
+                          <button
+                            type="button"
+                            className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                            onClick={() => {
+                              if (window.confirm("Drop this draft? It will be removed from your list.")) {
+                                dropDraft(t);
+                              }
+                            }}
+                          >
+                            DROP
+                          </button>
+                        </div>
+                      ) : isLocked && !isFinal ? (
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            className="inline-flex h-9 items-center justify-center rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                            onClick={() => openAmendModal(t, "MILESTONE")}
+                          >
+                            AMEND
+                          </button>
+                          <button
+                            type="button"
+                            className="inline-flex h-9 items-center justify-center rounded-full bg-zinc-900 px-3 text-xs font-semibold text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                            onClick={() => openAmendModal(t, "OUTCOME")}
+                          >
+                            OUTCOME
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="text-[11px] text-zinc-500 dark:text-zinc-400 text-right">
+                          {isFinal ? "Finalized." : isDroppedDraft ? "Dropped." : "—"}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {toast && (
+          <div className="mt-6 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
+            {toast}
+          </div>
+        )}
+      </main>
+
+      {/* LOCK MODAL */}
+      {lockOpen && lockId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
+          onMouseDown={() => !lockLoading && setLockOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg max-h-[90vh] rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-white/10 dark:bg-black flex flex-col"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex-1 overflow-y-auto p-5">
+              {!justLocked ? (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-lg font-semibold">This action is permanent.</div>
+                      <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+                        Once locked: no edits, no deletes — amendments only.
                       </div>
                     </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
 
-          {toast && (
-            <div className="mt-6 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
-              {toast}
-            </div>
-          )}
-        </main>
-
-        {/* LOCK MODAL */}
-        {lockOpen && lockId && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
-            onMouseDown={() => !lockLoading && setLockOpen(false)}
-          >
-            <div
-              className="w-full max-w-lg max-h-[90vh] rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-white/10 dark:bg-black flex flex-col"
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <div className="flex-1 overflow-y-auto p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-lg font-semibold">This action is permanent.</div>
-                    <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
-                      Once locked: no edits, no deletes — amendments only.
-                    </div>
+                    <button
+                      type="button"
+                      disabled={lockLoading}
+                      className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200 dark:hover:bg-white/10"
+                      onClick={() => setLockOpen(false)}
+                    >
+                      ✕
+                    </button>
                   </div>
 
-                  <button
-                    type="button"
-                    disabled={lockLoading}
-                    className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200 dark:hover:bg-white/10"
-                    onClick={() => setLockOpen(false)}
-                  >
-                    ✕
-                  </button>
-                </div>
+                  <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
+                    <div className="text-xs font-semibold">Commitment core (required)</div>
 
-                <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
-                  <div className="text-xs font-semibold">Commitment core (required)</div>
-
-                  <div className="mt-3">
-                    <label className="text-xs font-medium">Title</label>
-                    <input
-                      value={lockCoreTitle}
-                      onChange={(e) => setLockCoreTitle(e.target.value)}
-                      className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                      placeholder="Title"
-                    />
-                  </div>
-
-                  <div className="mt-3">
-                    <label className="text-xs font-medium">Commitment statement</label>
-                    <textarea
-                      value={lockCoreCommitment}
-                      onChange={(e) => setLockCoreCommitment(e.target.value)}
-                      className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                      rows={3}
-                      placeholder='One sentence. Example: "I will … by …"'
-                    />
-                  </div>
-
-                  <div className="mt-3">
-                    <label className="text-xs font-medium">Deadline (optional)</label>
-                    <input
-                      type="date"
-                      value={deadline}
-                      onChange={(e) => setDeadline(e.target.value)}
-                      className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                    />
-                    <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
-                    </div>
-                  </div>
-
-                  <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-                    {lockCoreOk ? "Core is valid." : "Minimum: title ≥ 3 chars, statement ≥ 8 chars."}
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <label className="text-xs font-medium">Lock reason (optional)</label>
-                  <textarea
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                    rows={3}
-                    placeholder="Why is this the point of no return?"
-                  />
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
-                  <div className="text-xs font-semibold">Optional stake (beta)</div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {[10, 25, 50].map((amt) => {
-                      const active = stakePreset === amt;
-                      return (
-                        <button
-                          key={amt}
-                          type="button"
-                          onClick={() => {
-                            setStakePreset(active ? null : amt);
-                            setStakeCustom("");
-                          }}
-                          className={[
-                            "h-9 rounded-full border px-4 text-xs font-medium transition",
-                            active
-                              ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-black"
-                              : "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50 dark:border-white/10 dark:bg-black/20 dark:text-zinc-200 dark:hover:bg-white/10",
-                          ].join(" ")}
-                        >
-                          ${amt}
-                        </button>
-                      );
-                    })}
-
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-zinc-500 dark:text-zinc-400">Custom:</span>
+                    <div className="mt-3">
+                      <label className="text-xs font-medium">Title</label>
                       <input
-                        value={stakeCustom}
-                        onChange={(e) => {
-                          setStakeCustom(e.target.value);
-                          setStakePreset(null);
-                        }}
-                        className="h-9 w-28 rounded-full border border-zinc-200 bg-white px-3 text-xs outline-none dark:border-white/10 dark:bg-black/20"
-                        placeholder="$"
-                        inputMode="numeric"
+                        value={lockCoreTitle}
+                        onChange={(e) => setLockCoreTitle(e.target.value)}
+                        className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+                        placeholder="Title"
                       />
                     </div>
+
+                    <div className="mt-3">
+                      <label className="text-xs font-medium">Commitment statement</label>
+                      <textarea
+                        value={lockCoreCommitment}
+                        onChange={(e) => setLockCoreCommitment(e.target.value)}
+                        className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+                        rows={3}
+                        placeholder='One sentence. Example: "I will … by …"'
+                      />
+                    </div>
+
+                    <div className="mt-3">
+                      <label className="text-xs font-medium">Deadline (optional)</label>
+                      <input
+                        type="date"
+                        value={deadline}
+                        onChange={(e) => setDeadline(e.target.value)}
+                        className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+                      />
+                    </div>
+
+                    <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+                      {lockCoreOk ? "Core is valid." : "Minimum: title ≥ 3 chars, statement ≥ 8 chars."}
+                    </div>
                   </div>
 
-                  <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-                    {stakeAmount ? `Selected stake: $${stakeAmount}` : "No stake attached."}
+                  <div className="mt-4">
+                    <label className="text-xs font-medium">Lock reason (optional)</label>
+                    <textarea
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                      className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+                      rows={3}
+                      placeholder="Why is this the point of no return?"
+                    />
                   </div>
-                  <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
-                    Declared on record only. Lockpoint does not collect or enforce stakes.
+
+                  <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
+                    <div className="text-xs font-semibold">Optional stake (beta)</div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {[10, 25, 50].map((amt) => {
+                        const active = stakePreset === amt;
+                        return (
+                          <button
+                            key={amt}
+                            type="button"
+                            onClick={() => {
+                              setStakePreset(active ? null : amt);
+                              setStakeCustom("");
+                            }}
+                            className={[
+                              "h-9 rounded-full border px-4 text-xs font-medium transition",
+                              active
+                                ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-black"
+                                : "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50 dark:border-white/10 dark:bg-black/20 dark:text-zinc-200 dark:hover:bg-white/10",
+                            ].join(" ")}
+                          >
+                            ${amt}
+                          </button>
+                        );
+                      })}
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-zinc-500 dark:text-zinc-400">Custom:</span>
+                        <input
+                          value={stakeCustom}
+                          onChange={(e) => {
+                            setStakeCustom(e.target.value);
+                            setStakePreset(null);
+                          }}
+                          className="h-9 w-28 rounded-full border border-zinc-200 bg-white px-3 text-xs outline-none dark:border-white/10 dark:bg-black/20"
+                          placeholder="$"
+                          inputMode="numeric"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+                      {stakeAmount ? `Selected stake: $${stakeAmount}` : "No stake attached."}
+                    </div>
+                    <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
+                      Declared on record only. Lockpoint does not collect or enforce stakes.
+                    </div>
                   </div>
-                </div>
 
-                <div className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
-                  Closing this window changes nothing. Locking does.
-                </div>
-              </div>
+                  <div className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
+                    Closing this window changes nothing. Locking does.
+                  </div>
 
+                  {toast ? (
+                    <div className="mt-4 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
+                      {toast}
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-lg font-semibold">Locked. Public record created.</div>
+                      <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+                        Share the record while the moment is hot.
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200 dark:hover:bg-white/10"
+                      onClick={() => {
+                        setLockOpen(false);
+                        setLockId(null);
+                        setJustLocked(null);
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
+                    <div className="text-xs text-zinc-500 dark:text-zinc-400">Public URL</div>
+                    <div className="mt-2 font-mono text-xs break-all">{`${origin}/t/${justLocked.id}`}</div>
+                  </div>
+
+                  <div className="mt-4">
+                    <ShareBar url={`${origin}/t/${justLocked.id}`} title={justLocked.title} />
+                  </div>
+
+                  <div className="mt-4 flex gap-2">
+                    <Link
+                      href={`/t/${justLocked.id}`}
+                      className="inline-flex h-11 flex-1 items-center justify-center rounded-full bg-zinc-900 px-4 text-sm font-semibold text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                    >
+                      Open record →
+                    </Link>
+
+                    <button
+                      type="button"
+                      className="inline-flex h-11 items-center justify-center rounded-full border border-zinc-200 bg-white px-4 text-sm font-semibold hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                      onClick={() => {
+                        setLockOpen(false);
+                        setLockId(null);
+                        setJustLocked(null);
+                      }}
+                    >
+                      Done
+                    </button>
+                  </div>
+
+                  {toast ? (
+                    <div className="mt-4 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
+                      {toast}
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
+
+            {/* footer (LOCK confirmation) — hide after successful lock */}
+            {!justLocked && (
               <div className="border-t border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-black">
                 <label className="text-xs font-medium">
                   Type <span className="font-mono">LOCK</span> to proceed
@@ -742,150 +817,145 @@ export default function MyCabinetPage() {
                   {lockLoading ? "Locking…" : "LOCK — irreversible"}
                 </button>
               </div>
-            </div>
+            )}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* AMEND MODAL */}
-        {amendOpen && amendTrajectoryId && (
+      {/* AMEND MODAL */}
+      {amendOpen && amendTrajectoryId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
+          onMouseDown={() => setAmendOpen(false)}
+        >
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
-            onMouseDown={() => setAmendOpen(false)}
+            className="w-full max-w-lg max-h-[90vh] rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-white/10 dark:bg-black flex flex-col"
+            onMouseDown={(e) => e.stopPropagation()}
           >
-            <div
-              className="w-full max-w-lg max-h-[90vh] rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-white/10 dark:bg-black flex flex-col"
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <div className="p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-lg font-semibold">Add amendment</div>
-                    <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                      Amendments are immutable. They extend the record.
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200 dark:hover:bg-white/10"
-                    onClick={() => setAmendOpen(false)}
-                  >
-                    ✕
-                  </button>
+            <div className="p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-lg font-semibold">Add amendment</div>
+                  <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">Amendments are immutable. They extend the record.</div>
                 </div>
-
-                <div className="mt-4">
-                  <label className="text-xs font-medium">Type</label>
-                  <select
-                    value={amendKind}
-                    onChange={(e) => {
-                      const k = e.target.value as AmendmentKind;
-                      setAmendKind(k);
-                      setOutcomeResult("COMPLETED");
-                    }}
-                    className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                  >
-                    <option value="MILESTONE">AMEND — clarification / milestone</option>
-                    <option value="NOTE">NOTE — short note</option>
-                    <option value="OUTCOME" disabled={norm(amendTrajectoryStatus) !== "locked"}>
-                      OUTCOME — final result (locked only)
-                    </option>
-                  </select>
-                  {norm(amendTrajectoryStatus) !== "locked" ? (
-                    <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-                      Outcome is available only while status is <span className="font-mono">locked</span>.
-                    </div>
-                  ) : null}
-                </div>
-
-                {amendKind === "OUTCOME" && (
-                  <div className="mt-4">
-                    <label className="text-xs font-medium">Outcome</label>
-                    <div className="mt-2 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setOutcomeResult("COMPLETED")}
-                        className={[
-                          "h-9 rounded-full border px-4 text-xs font-medium transition",
-                          outcomeResult === "COMPLETED"
-                            ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-black"
-                            : "border-zinc-200 bg-white hover:bg-zinc-50 dark:border-white/10 dark:bg-black/20 dark:hover:bg-white/10",
-                        ].join(" ")}
-                      >
-                        Completed
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setOutcomeResult("FAILED")}
-                        className={[
-                          "h-9 rounded-full border px-4 text-xs font-medium transition",
-                          outcomeResult === "FAILED"
-                            ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-black"
-                            : "border-zinc-200 bg-white hover:bg-zinc-50 dark:border-white/10 dark:bg-black/20 dark:hover:bg-white/10",
-                        ].join(" ")}
-                      >
-                        Dropped
-                      </button>
-                    </div>
-                    <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-                      Outcome is permanent.
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-4">
-                  <label className="text-xs font-medium">Text</label>
-                  <textarea
-                    value={amendBody}
-                    onChange={(e) => setAmendBody(e.target.value)}
-                    className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
-                    rows={4}
-                    placeholder={amendKind === "OUTCOME" ? "Outcome note (facts). One sentence." : "What happened? (facts)"}
-                  />
-                  {amendBody.trim().length > 0 && amendBody.trim().length < amendMinLen ? (
-                    <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                      Minimum {amendMinLen} characters
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
-                  Type <span className="font-mono">AMEND</span> to record this.
-                </div>
-
-                <div className="mt-2">
-                  <input
-                    value={amendConfirm}
-                    onChange={(e) => setAmendConfirm(e.target.value)}
-                    className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm font-mono outline-none dark:border-white/10 dark:bg-white/5"
-                    placeholder="AMEND"
-                  />
-                </div>
-
-                <div className="mt-5">
-                  <button
-                    type="button"
-                    disabled={!canAmend}
-                    className={[
-                      "h-11 w-full rounded-full text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
-                      canAmend
-                        ? "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-                        : "bg-zinc-300 text-zinc-700 dark:bg-white/10 dark:text-zinc-300",
-                    ].join(" ")}
-                    onClick={addAmendment}
-                  >
-                    {amendKind === "OUTCOME" ? "RECORD OUTCOME — irreversible" : "RECORD"}
-                  </button>
-                </div>
-
-                {toast && (
-                  <div className="mt-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
-                    {toast}
-                  </div>
-                )}
+                <button
+                  type="button"
+                  className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200 dark:hover:bg-white/10"
+                  onClick={() => setAmendOpen(false)}
+                >
+                  ✕
+                </button>
               </div>
+
+              <div className="mt-4">
+                <label className="text-xs font-medium">Type</label>
+                <select
+                  value={amendKind}
+                  onChange={(e) => {
+                    const k = e.target.value as AmendmentKind;
+                    setAmendKind(k);
+                    setOutcomeResult("COMPLETED");
+                  }}
+                  className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+                >
+                  <option value="MILESTONE">AMEND — clarification / milestone</option>
+                  <option value="NOTE">NOTE — short note</option>
+                  <option value="OUTCOME" disabled={norm(amendTrajectoryStatus) !== "locked"}>
+                    OUTCOME — final result (locked only)
+                  </option>
+                </select>
+                {norm(amendTrajectoryStatus) !== "locked" ? (
+                  <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                    Outcome is available only while status is <span className="font-mono">locked</span>.
+                  </div>
+                ) : null}
+              </div>
+
+              {amendKind === "OUTCOME" && (
+                <div className="mt-4">
+                  <label className="text-xs font-medium">Outcome</label>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setOutcomeResult("COMPLETED")}
+                      className={[
+                        "h-9 rounded-full border px-4 text-xs font-medium transition",
+                        outcomeResult === "COMPLETED"
+                          ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-black"
+                          : "border-zinc-200 bg-white hover:bg-zinc-50 dark:border-white/10 dark:bg-black/20 dark:hover:bg-white/10",
+                      ].join(" ")}
+                    >
+                      Completed
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOutcomeResult("FAILED")}
+                      className={[
+                        "h-9 rounded-full border px-4 text-xs font-medium transition",
+                        outcomeResult === "FAILED"
+                          ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-black"
+                          : "border-zinc-200 bg-white hover:bg-zinc-50 dark:border-white/10 dark:bg-black/20 dark:hover:bg-white/10",
+                      ].join(" ")}
+                    >
+                      Dropped
+                    </button>
+                  </div>
+                  <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">Outcome is permanent.</div>
+                </div>
+              )}
+
+              <div className="mt-4">
+                <label className="text-xs font-medium">Text</label>
+                <textarea
+                  value={amendBody}
+                  onChange={(e) => setAmendBody(e.target.value)}
+                  className="mt-2 w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm outline-none dark:border-white/10 dark:bg-white/5"
+                  rows={4}
+                  placeholder={amendKind === "OUTCOME" ? "Outcome note (facts). One sentence." : "What happened? (facts)"}
+                />
+                {amendBody.trim().length > 0 && amendBody.trim().length < amendMinLen ? (
+                  <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Minimum {amendMinLen} characters</div>
+                ) : null}
+              </div>
+
+              <div className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
+                Type <span className="font-mono">AMEND</span> to record this.
+              </div>
+
+              <div className="mt-2">
+                <input
+                  value={amendConfirm}
+                  onChange={(e) => setAmendConfirm(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm font-mono outline-none dark:border-white/10 dark:bg-white/5"
+                  placeholder="AMEND"
+                />
+              </div>
+
+              <div className="mt-5">
+                <button
+                  type="button"
+                  disabled={!canAmend}
+                  className={[
+                    "h-11 w-full rounded-full text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
+                    canAmend
+                      ? "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                      : "bg-zinc-300 text-zinc-700 dark:bg-white/10 dark:text-zinc-300",
+                  ].join(" ")}
+                  onClick={addAmendment}
+                >
+                  {amendKind === "OUTCOME" ? "RECORD OUTCOME — irreversible" : "RECORD"}
+                </button>
+              </div>
+
+              {toast && (
+                <div className="mt-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
+                  {toast}
+                </div>
+              )}
             </div>
           </div>
-        )}
-      </div>
-    );
+        </div>
+      )}
+    </div>
+  );
 }
