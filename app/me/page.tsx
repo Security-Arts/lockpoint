@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import ShareBar from "@/components/ShareBar";
 
@@ -47,8 +47,13 @@ function norm(s?: string | null) {
   return String(s ?? "").toLowerCase();
 }
 
+function cx(...arr: Array<string | false | null | undefined>) {
+  return arr.filter(Boolean).join(" ");
+}
+
 export default function MyCabinetPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [items, setItems] = useState<Trajectory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,6 +79,11 @@ export default function MyCabinetPage() {
   // ✅ post-lock share state (inside modal)
   const [justLocked, setJustLocked] = useState<{ id: string; title: string } | null>(null);
 
+  // ✅ WOW: auto-open lock modal for newly created draft via /me?new=<id>&autolock=1
+  const [pendingAutoLockId, setPendingAutoLockId] = useState<string | null>(null);
+  const [pendingAutoLock, setPendingAutoLock] = useState<boolean>(false);
+  const [autoLockArmed, setAutoLockArmed] = useState<boolean>(false);
+
   const origin = useMemo(() => {
     if (typeof window === "undefined") return "https://lockpoint.app";
     return window.location.origin;
@@ -87,6 +97,20 @@ export default function MyCabinetPage() {
   const [amendBody, setAmendBody] = useState("");
   const [amendConfirm, setAmendConfirm] = useState("");
   const [outcomeResult, setOutcomeResult] = useState<OutcomeResult>("COMPLETED");
+
+  // Read query params once and arm auto-lock
+  useEffect(() => {
+    const id = searchParams?.get("new");
+    const al = searchParams?.get("autolock");
+    if (id && String(al) === "1") {
+      setPendingAutoLockId(id);
+      setPendingAutoLock(true);
+      setAutoLockArmed(true);
+      // Make sure user sees it even if filter was not drafts
+      setFilter("all");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -146,6 +170,33 @@ export default function MyCabinetPage() {
     return uid;
   }
 
+  function openLockModal(t: Trajectory) {
+    setToast(null);
+    setJustLocked(null);
+
+    setLockId(t.id);
+    setLockOpen(true);
+    setLockLoading(false);
+
+    setLockCoreTitle(t.title ?? "");
+    setLockCoreCommitment(t.commitment ?? "");
+
+    setReason("");
+    setConfirmText("");
+    setStakePreset(null);
+    setStakeCustom("");
+
+    setDeadline(t.deadline_at ? String(t.deadline_at).slice(0, 10) : "");
+  }
+
+  function clearAutoLockParams() {
+    if (typeof window === "undefined") return;
+    const u = new URL(window.location.href);
+    u.searchParams.delete("new");
+    u.searchParams.delete("autolock");
+    window.history.replaceState({}, "", u.toString());
+  }
+
   async function loadMine() {
     setLoading(true);
     setToast(null);
@@ -167,7 +218,37 @@ export default function MyCabinetPage() {
 
       if (error) throw error;
 
-      setItems((data ?? []) as Trajectory[]);
+      const rows = (data ?? []) as Trajectory[];
+      setItems(rows);
+
+      // ✅ WOW: after list loads, auto-open lock modal for the newly created draft
+      if (autoLockArmed && pendingAutoLock && pendingAutoLockId) {
+        const hit = rows.find((x) => x.id === pendingAutoLockId);
+        const st = norm(hit?.status);
+        const isDraft = !!hit && st === "draft" && !hit.locked_at && !hit.dropped_at;
+
+        if (hit && isDraft) {
+          openLockModal(hit);
+
+          // show subtle toast in modal context
+          setToast("Draft created. Lock it now (irreversible).");
+
+          // disarm + clean url
+          setPendingAutoLock(false);
+          setPendingAutoLockId(null);
+          setAutoLockArmed(false);
+          clearAutoLockParams();
+
+          // if user was filtering, nudge search to show it
+          setQ("");
+        } else if (hit) {
+          // If it’s not draft anymore, just disarm and clean URL.
+          setPendingAutoLock(false);
+          setPendingAutoLockId(null);
+          setAutoLockArmed(false);
+          clearAutoLockParams();
+        }
+      }
     } catch (e: any) {
       console.error("loadMine error:", e);
       setToast(e?.message ?? "Load failed");
@@ -200,25 +281,6 @@ export default function MyCabinetPage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [lockLoading]);
 
-  function openLockModal(t: Trajectory) {
-    setToast(null);
-    setJustLocked(null);
-
-    setLockId(t.id);
-    setLockOpen(true);
-    setLockLoading(false);
-
-    setLockCoreTitle(t.title ?? "");
-    setLockCoreCommitment(t.commitment ?? "");
-
-    setReason("");
-    setConfirmText("");
-    setStakePreset(null);
-    setStakeCustom("");
-
-    setDeadline(t.deadline_at ? String(t.deadline_at).slice(0, 10) : "");
-  }
-
   async function lockTrajectory() {
     if (!lockId) return;
     if (lockLoading) return;
@@ -243,7 +305,7 @@ export default function MyCabinetPage() {
     // ✅ avoid timezone-shift: store at 12:00Z for date-only input
     const deadlineISO = deadline ? `${deadline}T12:00:00.000Z` : null;
 
-    const payload = {
+    const payload: any = {
       title,
       commitment,
       status: "locked",
@@ -536,6 +598,13 @@ export default function MyCabinetPage() {
                         Open
                       </Link>
 
+                      {/* ✅ Share button should exist for PUBLIC locked records (this fixes your “where is share?”) */}
+                      {t.is_public && isLocked ? (
+                        <div className="w-full">
+                          <ShareBar url={`${origin}/t/${t.id}`} title={t.title || "Lockpoint record"} />
+                        </div>
+                      ) : null}
+
                       {isDraft && !isDroppedDraft ? (
                         <div className="flex gap-2">
                           <button
@@ -724,9 +793,7 @@ export default function MyCabinetPage() {
                     </div>
                   </div>
 
-                  <div className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
-                    Closing this window changes nothing. Locking does.
-                  </div>
+                  <div className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">Closing this window changes nothing. Locking does.</div>
 
                   {toast ? (
                     <div className="mt-4 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-200">
@@ -739,9 +806,7 @@ export default function MyCabinetPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-lg font-semibold">Locked. Public record created.</div>
-                      <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
-                        Share the record while the moment is hot.
-                      </div>
+                      <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">Share the record while the moment is hot.</div>
                     </div>
 
                     <button
@@ -830,10 +895,7 @@ export default function MyCabinetPage() {
 
       {/* AMEND MODAL */}
       {amendOpen && amendTrajectoryId && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
-          onMouseDown={() => setAmendOpen(false)}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4" onMouseDown={() => setAmendOpen(false)}>
           <div
             className="w-full max-w-lg max-h-[90vh] rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-white/10 dark:bg-black flex flex-col"
             onMouseDown={(e) => e.stopPropagation()}
@@ -842,9 +904,7 @@ export default function MyCabinetPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-lg font-semibold">Add amendment</div>
-                  <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                    Amendments are immutable. They extend the record.
-                  </div>
+                  <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">Amendments are immutable. They extend the record.</div>
                 </div>
                 <button
                   type="button"
@@ -945,9 +1005,7 @@ export default function MyCabinetPage() {
                   disabled={!canAmend}
                   className={[
                     "h-11 w-full rounded-full text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
-                    canAmend
-                      ? "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-                      : "bg-zinc-300 text-zinc-700 dark:bg-white/10 dark:text-zinc-300",
+                    canAmend ? "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200" : "bg-zinc-300 text-zinc-700 dark:bg-white/10 dark:text-zinc-300",
                   ].join(" ")}
                   onClick={addAmendment}
                 >
