@@ -218,7 +218,14 @@ export default function Home() {
   async function signIn() {
     setToast(null);
     // ✅ always land back on "/" after auth, so the flow can continue
-    const next = typeof window !== "undefined" ? window.location.href : `${window.location.origin}/`;
+    let next = "https://lockpoint.app/";
+if (typeof window !== "undefined") {
+  next = `${window.location.origin}/`;
+}
+await supabase.auth.signInWithOAuth({
+  provider: "google",
+  options: { redirectTo: next },
+});
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: next },
