@@ -1,21 +1,27 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { DM_Mono, Fraunces } from "next/font/google";
 import "./globals.css";
 import Footer from "@/components/Footer";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const dmMono = DM_Mono({
+  variable: "--font-dm-mono",
   subsets: ["latin"],
+  weight: ["300", "400", "500"],
+  style: ["normal", "italic"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
   subsets: ["latin"],
+  weight: ["200", "300", "700"],
+  style: ["normal", "italic"],
+  axes: ["opsz"],
 });
 
 export const metadata: Metadata = {
   title: "Lockpoint — Public Commitment Registry",
-  description: "Lock a commitment. The record stays. Public registry for irreversible commitments with permanent outcomes.",
+  description:
+    "Lock a commitment. The record stays. Public registry for irreversible commitments with permanent outcomes.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -23,9 +29,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body
         className={[
-          geistSans.variable,
-          geistMono.variable,
-          "antialiased bg-zinc-50 text-zinc-900 dark:bg-black dark:text-zinc-50",
+          dmMono.variable,
+          fraunces.variable,
+          "antialiased bg-zinc-50 text-zinc-900 dark:bg-[#060B15] dark:text-zinc-50",
           "min-h-screen flex flex-col",
         ].join(" ")}
       >
