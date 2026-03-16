@@ -122,8 +122,11 @@ export default function Home() {
   async function loadPulse() {
     setLoadingPulse(true);
     try {
-      const base = supabase.from("trajectories").select("id", { count: "exact", head: true }).eq("is_public", true);
-      const [lockedR, completedR, droppedR] = await Promise.all([base.eq("status", "locked"), base.eq("status", "completed"), supabase.from("trajectories").select("id", { count: "exact", head: true }).eq("is_public", true).in("status", ["dropped", "failed"])]);
+const [lockedR, completedR, droppedR] = await Promise.all([
+  supabase.from("trajectories").select("id", { count: "exact", head: true }).eq("is_public", true).eq("status", "locked"),
+  supabase.from("trajectories").select("id", { count: "exact", head: true }).eq("is_public", true).eq("status", "completed"),
+  supabase.from("trajectories").select("id", { count: "exact", head: true }).eq("is_public", true).in("status", ["dropped", "failed"]),
+]);
       const todayIso = getStartOfTodayISO(); const soonIso = getISODatePlusDays(7);
       const dueSoonR = await supabase.from("trajectories").select("id", { count: "exact", head: true }).eq("is_public", true).in("status", ["locked","completed","dropped","failed"]).gte("deadline_at", todayIso).lte("deadline_at", soonIso);
       const overdueR = await supabase.from("trajectories").select("id", { count: "exact", head: true }).eq("is_public", true).in("status", ["locked","completed","dropped","failed"]).lt("deadline_at", todayIso);
