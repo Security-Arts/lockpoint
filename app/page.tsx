@@ -471,8 +471,6 @@ const [lockedR, completedR, droppedR] = await Promise.all([
                   </Link>
                 </div>
 
-              </div>
-
               {/* RIGHT: form */}
               <div>
                 <div className="border border-zinc-200 dark:border-white/10 bg-zinc-50/50 dark:bg-white/3 p-6">
