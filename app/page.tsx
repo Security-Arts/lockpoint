@@ -460,6 +460,18 @@ const [lockedR, completedR, droppedR] = await Promise.all([
                   </div>
                 </div>
               </div>
+              {/* Dashboard demo link */}
+                <div className="mt-4">
+                  <Link
+                    href="/organizers"
+                    className="inline-flex items-center gap-2 h-9 px-5 text-xs tracking-[0.08em] uppercase font-medium border"
+                    style={{ borderColor: "rgba(0,201,138,0.3)", color: "#00C98A", background: "rgba(0,201,138,0.05)" }}
+                  >
+                    View demo dashboard →
+                  </Link>
+                </div>
+
+              </div>
 
               {/* RIGHT: form */}
               <div>
@@ -481,7 +493,7 @@ const [lockedR, completedR, droppedR] = await Promise.all([
                           <label className="text-[10px] tracking-[0.12em] uppercase text-zinc-400 block mb-1.5">Platform (optional)</label>
                           <select value={orgPlatform} onChange={e => setOrgPlatform(e.target.value)} className={cx(selectCls, "py-2.5")} style={MONO}>
                             <option value="">Select platform</option>
-                            <option>Maven</option><option>Kajabi</option><option>Teachable</option><option>Circle</option><option>Custom / other</option>
+                            <option>Maven</option><option>Skool</option><option>Kajabi</option><option>Teachable</option><option>Circle</option><option>Custom / other</option>
                           </select>
                         </div>
                         <button type="button" disabled={orgBusy || !orgName.trim() || !orgEmail.trim()} onClick={submitOrganizerRequest} className="mt-2 w-full h-11 bg-zinc-900 text-white text-xs tracking-[0.1em] uppercase font-semibold hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-[#00C98A] dark:text-black dark:hover:opacity-90" style={CLIP}>
