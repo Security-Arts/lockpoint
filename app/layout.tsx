@@ -13,9 +13,8 @@ const dmMono = DM_Mono({
 const fraunces = Fraunces({
   variable: "--font-fraunces",
   subsets: ["latin"],
-  weight: ["200", "300", "700"],
+  weight: "variable",
   style: ["normal", "italic"],
-  axes: ["opsz"],
 });
 
 export const metadata: Metadata = {
