@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Check-in — Lockpoint</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F5F5F3;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:2rem 1rem}
+  .card{background:#fff;border-radius:12px;border:1px solid #E0E0DC;padding:2rem;max-width:480px;width:100%}
+  .logo{font-size:12px;font-weight:700;letter-spacing:.1em;color:#999;margin-bottom:1.75rem;text-transform:uppercase}
+  h1{font-size:20px;font-weight:700;color:#1A1A2E;margin-bottom:.375rem;line-height:1.3}
+  .desc{font-size:14px;color:#999;margin-bottom:1.75rem}
+  .commitment-banner{background:#F0F4FF;border:1.5px solid #C8D5F8;border-radius:8px;padding:11px 14px;margin-bottom:1.75rem;display:none}
+  .commitment-banner .cb-label{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#5070C0;margin-bottom:4px}
+  .commitment-banner .cb-action{font-size:14px;font-weight:600;color:#1A1A2E;line-height:1.4}
+  .field{margin-bottom:1.25rem}
+  label{display:block;font-size:13px;font-weight:600;color:#1A1A2E;margin-bottom:8px}
+  input,select{width:100%;padding:10px 13px;border:1.5px solid #E0E0DC;border-radius:8px;font-size:14px;font-family:inherit;color:#1A1A2E;outline:none;background:#fff;transition:border-color .15s}
+  input:focus,select:focus{border-color:#1A1A2E}
+  .req{color:#E94560;margin-left:2px}
+  .yn{display:flex;gap:10px}
+  .yn-opt{flex:1;padding:12px;border:1.5px solid #E0E0DC;border-radius:8px;text-align:center;cursor:pointer;font-size:15px;font-weight:600;color:#AAA;transition:all .15s;user-select:none}
+  .yn-opt:hover{border-color:#BBB;color:#888}
+  .yn-yes.active{border-color:#27AE60;background:#E8F5E9;color:#1B5E20}
+  .yn-no.active{border-color:#E24B4A;background:#FDECEA;color:#7F0000}
+  .cond{margin-top:1rem;padding:12px 14px;background:#FFF8E1;border-left:3px solid #EF9F27;border-radius:0 8px 8px 0;display:none}
+  .cond label{color:#7D5A00;font-size:13px}
+  .cond select{border-color:#F0D080;background:#FFFDF5;margin-top:6px}
+  .btn{width:100%;padding:14px;background:#1A1A2E;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;margin-top:.875rem;transition:opacity .15s}
+  .btn:hover{opacity:.88}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .success{display:none;text-align:center;padding:2.5rem 0}
+  .success-icon{width:56px;height:56px;background:#E8F5E9;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 1.25rem;font-size:26px}
+  .success h2{font-size:19px;font-weight:700;color:#1A1A2E;margin-bottom:.5rem}
+  .success p{font-size:14px;color:#666;line-height:1.6}
+  .err{border-color:#E94560 !important;background:#FFF8F8 !important}
+  .err-yn{outline:2px solid #E94560;border-radius:8px}
+  .error-msg{font-size:12px;color:#E94560;margin-top:8px;display:none}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">Lockpoint</div>
+  <h1>Daily Execution Check</h1>
+  <p class="desc">Quick check — 5 seconds.</p>
+
+  <div class="commitment-banner" id="banner">
+    <div class="cb-label">Your commitment today</div>
+    <div class="cb-action" id="banner-action"></div>
+  </div>
+
+  <div id="form-body">
+    <div class="field">
+      <label>Name <span class="req">*</span></label>
+      <input type="text" id="name" placeholder="Your name or nickname" autocomplete="given-name">
+    </div>
+
+    <div class="field">
+      <label>Day <span class="req">*</span></label>
+      <select id="day">
+        <option value="">Select day...</option>
+        <option>Day 1</option><option>Day 2</option><option>Day 3</option>
+        <option>Day 4</option><option>Day 5</option><option>Day 6</option><option>Day 7</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label id="q1-label">Did you complete your defined daily action? <span class="req">*</span></label>
+      <div class="yn" id="q1-group">
+        <div class="yn-opt yn-yes" onclick="pick('q1','yes')">Yes</div>
+        <div class="yn-opt yn-no"  onclick="pick('q1','no')">No</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Are you still on track for your 7-day goal? <span class="req">*</span></label>
+      <div class="yn" id="q2-group">
+        <div class="yn-opt yn-yes" onclick="pick('q2','yes')">Yes</div>
+        <div class="yn-opt yn-no"  onclick="pick('q2','no')">No</div>
+      </div>
+    </div>
+
+    <div class="cond" id="blocker">
+      <label>What blocked you today?</label>
+      <select id="blocker-val">
+        <option value="">Select...</option>
+        <option>No time</option>
+        <option>Got stuck</option>
+        <option>Lost focus</option>
+        <option>Priorities changed</option>
+        <option>Other</option>
+      </select>
+    </div>
+
+    <div class="error-msg" id="error-msg">Please answer all required questions.</div>
+    <button class="btn" id="submit-btn" onclick="submitForm()">Submit check-in →</button>
+  </div>
+
+  <div class="success" id="success">
+    <div class="success-icon">✓</div>
+    <h2>Check-in recorded.</h2>
+    <p>See you tomorrow.</p>
+  </div>
+</div>
+
+<script>
+var SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwyh5Lf-JrW3DDqlyrsqJZQmi23-3M4Be3FuSRfuN0Zpm5s5cNvsYa-865iQKZ4iACkZw/exec";
+var q1 = '', q2 = '';
+
+// Read URL params → personalise form
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  var action = params.get('action');
+  var name   = params.get('name');
+  var day    = params.get('day');
+
+  if (action) {
+    // Show commitment banner
+    document.getElementById('banner').style.display = 'block';
+    document.getElementById('banner-action').textContent = action;
+    // Personalise Q1 label
+    document.getElementById('q1-label').innerHTML =
+      'Did you <strong>' + action + '</strong> today? <span style="color:#E94560;margin-left:2px">*</span>';
+  }
+  if (name) {
+    document.getElementById('name').value = name;
+  }
+  if (day) {
+    var sel = document.getElementById('day');
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].text === 'Day ' + day) {
+        sel.selectedIndex = i; break;
+      }
+    }
+  }
+})();
+
+function pick(q, val) {
+  if (q === 'q1') {
+    q1 = val;
+    document.querySelectorAll('#q1-group .yn-opt').forEach(function(el){ el.classList.remove('active'); });
+    document.querySelector('#q1-group .yn-' + val).classList.add('active');
+  } else {
+    q2 = val;
+    document.querySelectorAll('#q2-group .yn-opt').forEach(function(el){ el.classList.remove('active'); });
+    document.querySelector('#q2-group .yn-' + val).classList.add('active');
+  }
+  document.getElementById('blocker').style.display = (q1 === 'no' || q2 === 'no') ? 'block' : 'none';
+  document.getElementById('q1-group').classList.remove('err-yn');
+  document.getElementById('q2-group').classList.remove('err-yn');
+}
+
+function submitForm() {
+  var ok = true;
+  var name = document.getElementById('name');
+  var day  = document.getElementById('day');
+  name.classList.remove('err'); day.classList.remove('err');
+  if (!name.value.trim()) { name.classList.add('err'); ok = false; }
+  if (!day.value)          { day.classList.add('err');  ok = false; }
+  if (!q1) { document.getElementById('q1-group').classList.add('err-yn'); ok = false; }
+  if (!q2) { document.getElementById('q2-group').classList.add('err-yn'); ok = false; }
+  document.getElementById('error-msg').style.display = ok ? 'none' : 'block';
+  if (!ok) return;
+
+  var btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  var params = new URLSearchParams(window.location.search);
+
+  var data = new URLSearchParams({
+    formType:  "checkin",
+    name:      name.value.trim(),
+    day:       day.value,
+    completed: q1 === 'yes' ? 'Yes' : 'No',
+    onTrack:   q2 === 'yes' ? 'Yes' : 'No',
+    blocker:   document.getElementById('blocker-val').value || '',
+    action:    params.get('action') || ''
+  });
+
+  fetch(SCRIPT_URL, {
+    method: "POST",
+    mode:   "no-cors",
+    body:   data
+  })
+  .then(function() {
+    document.getElementById('form-body').style.display = 'none';
+    document.getElementById('success').style.display   = 'block';
+  })
+  .catch(function() {
+    btn.disabled = false;
+    btn.textContent = 'Submit check-in →';
+    document.getElementById('error-msg').textContent = 'Something went wrong. Please try again.';
+    document.getElementById('error-msg').style.display = 'block';
+  });
+}
+</script>
+</body>
+</html>
